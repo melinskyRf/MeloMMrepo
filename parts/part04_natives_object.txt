@@ -1,0 +1,71 @@
+-- ============================================================================
+-- MELOCAT-PART rev=4 file=part04_natives_object.txt
+-- MeloCatScr 1.1.0 part 4 of 4. Header rev must match PARTS_REV.
+-- ============================================================================
+-- [MC:natives/object] Object creation
+-- Owner: world/entity_registry; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.OBJECT=function(native,bind)
+    native.OBJECT = {CREATE_OBJECT = bind(0x509D5878EB39E842, "InvokeInt", "ifffbbb")}
+    native.OBJECT.PLACE_OBJECT_ON_GROUND_PROPERLY = bind(0x58A850EAEE20FAA3, "InvokeBool", "i")
+    native.OBJECT.DOOR_SYSTEM_SET_DOOR_STATE = bind(0x6BAB9442830C7F53, "InvokeVoid", "iibb")
+    native.OBJECT.DOOR_SYSTEM_GET_DOOR_STATE = bind(0x160AA1B32F6139B8, "InvokeInt", "i")
+    native.OBJECT.DOOR_SYSTEM_SET_OPEN_RATIO = bind(0xB6E6FBA95C7324AC, "InvokeVoid", "ifbb")
+    native.OBJECT.DOOR_SYSTEM_GET_OPEN_RATIO = bind(0x65499865FCA6E5EC, "InvokeFloat", "i")
+    native.OBJECT.DOOR_SYSTEM_GET_IS_PHYSICS_LOADED = bind(0xDF97CDD4FC08FD34, "InvokeBool", "i")
+    native.OBJECT.DOOR_SYSTEM_FIND_EXISTING_DOOR = bind(0x589F80B325CC82C5, "InvokeBool", "fffii")
+end
+-- [/MC:natives/object]
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/player] Player operations
+-- Owner: world/player_directory; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.PLAYER=function(native,bind)
+    native.PLAYER = {}
+    native.PLAYER.GET_PLAYER_INVINCIBLE = bind(0xB721981B2B939E07, "InvokeBool", "i")
+    native.PLAYER.GET_PLAYER_NAME = bind(0x6D0DE6A7B5DA71F8, "InvokeString", "i")
+    native.PLAYER.GET_PLAYER_PED = bind(0x43A66C31C68491C0, "InvokeInt", "i")
+    native.PLAYER.GET_PLAYER_PED_SCRIPT_INDEX = bind(0x50FAC3A3E030A6E1, "InvokeInt", "i")
+    native.PLAYER.GET_PLAYER_WANTED_LEVEL = bind(0xE28E54788CE8F12D, "InvokeInt", "i")
+    native.PLAYER.IS_PLAYER_FREE_AIMING_AT_ENTITY = bind(0x3C06B5C839B38F7B, "InvokeBool", "ii")
+    native.PLAYER.PLAYER_ID = bind(0x4F8644AF03D0E0D6, "InvokeInt", "")
+    native.PLAYER.PLAYER_PED_ID = bind(0xD80958FC74E988A6, "InvokeInt", "")
+    native.PLAYER.REPORT_CRIME = bind(0xE9B09589827545E7, "InvokeVoid", "iii")
+    native.PLAYER.RESTORE_PLAYER_STAMINA = bind(0xA352C1B864CAFD33, "InvokeVoid", "if")
+    native.PLAYER.GET_PLAYER_MAX_ARMOUR = bind(0x92659B4CE1863CB3, "InvokeInt", "i")
+    native.PLAYER.SET_SWIM_MULTIPLIER_FOR_PLAYER = bind(0xA91C6F0FF7D16A13, "InvokeVoid", "if")
+    native.PLAYER.SET_PLAYER_WANTED_LEVEL = bind(0x39FF19C64EF7DA5B, "InvokeVoid", "iib")
+    native.PLAYER.SET_PLAYER_WANTED_LEVEL_NOW = bind(0xE0A7D1E497FFCD6F, "InvokeVoid", "ib")
+    native.PLAYER.CLEAR_PLAYER_WANTED_LEVEL = bind(0xB302540597885499, "InvokeVoid", "i")
+    native.PLAYER.DISABLE_PLAYER_FIRING = bind(0x5E6CC07646BBEAB8, "InvokeVoid", "ib")
+    native.PLAYER.SET_PLAYER_MODEL = bind(0x00A1CADD00108836, "InvokeVoid", "ii")
+    native.PLAYER.SET_PLAYER_MELEE_WEAPON_DAMAGE_MODIFIER = bind(0x4A3DC7ECCC321032, "InvokeVoid", "ifb")
+    native.PLAYER.GET_ENTITY_PLAYER_IS_FREE_AIMING_AT = bind(0x2975C866E6713290, "InvokeBool", "ii")
+    native.PLAYER.IS_PLAYER_FREE_AIMING = bind(0x2E397FD2ECD37C87, "InvokeBool", "i")
+    native.PLAYER.SET_RUN_SPRINT_MULTIPLIER_FOR_PLAYER = bind(0x6DB47AA77FD94E09, "InvokeVoid", "if")
+end
+-- [/MC:natives/player]
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/misc] Shared game utilities
+-- Owner: platform/memory_arena; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.MISC=function(native,bind)
+    native.MISC = {}
+    native.MISC.SET_OVERRIDE_WEATHER = bind(0xA43D5C6FE51ADBEF, "InvokeVoid", "s")
+    native.MISC.CLEAR_OVERRIDE_WEATHER = bind(0x338D2E3477711050, "InvokeVoid", "")
+    native.MISC.CLEAR_AREA_OF_PROJECTILES = bind(0x0A1CB9094635D1A6, "InvokeVoid", "ffffi")
+    native.MISC.SHOOT_SINGLE_BULLET_BETWEEN_COORDS = bind(0x867654CBC7606F2C, "InvokeVoid", "ffffffibiibbf")
+    native.MISC.SHOOT_SINGLE_BULLET_BETWEEN_COORDS_IGNORE_ENTITY = bind(0xE3A7742E0B7A2F8B, "InvokeVoid", "ffffffibiibbfii")
+    native.MISC.IS_POSITION_OCCUPIED = bind(0xADCDE75E1C60F32D, "InvokeBool", "ffffbbbbbib")
+    native.MISC.GET_MODEL_DIMENSIONS = bind(0x03E8D3D5F549087A, "InvokeVoid", "iii")
+    native.MISC.DRAW_LINE = native.GRAPHICS.DRAW_LINE
+    native.MISC.GET_GROUND_Z_FOR_3D_COORD = bind(0xC906A7DAB05C8D2B, "InvokeBool", "fffibb")
+    native.MISC.SET_EXPLOSIVE_MELEE_THIS_FRAME = bind(0xFF1BED81BFDC0FE0, "InvokeVoid", "i")
+    native.MISC.SET_SUPER_JUMP_THIS_FRAME = bind(0x57FFF03E423A4C0B, "InvokeVoid", "i")
+    native.MISC.SHOOT_SINGLE_BULLET_BETWEEN_COORDS_IGNORE_ENTITY_NEW = bind(0xBFE5756E7407064A, "InvokeVoid", "ffffffibiibbfibbibiii")
+end
+-- [/MC:natives/misc]
+
+-- ----------------------------------------------------------------------------

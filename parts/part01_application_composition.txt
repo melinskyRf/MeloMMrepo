@@ -1,0 +1,1619 @@
+-- ============================================================================
+-- MELOCAT-PART rev=4 file=part01_application_composition.txt
+-- MeloCatScr 1.1.0 part 1 of 4. Header rev must match PARTS_REV.
+-- ============================================================================
+
+-- ============================================================================
+-- 01 / MELOCAT APPLICATION / Execution and lifecycle
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- [MC:application/composition] 01.01 / COMPOSITION
+-- Connect feature catalogs to navigation and mark the application ready.
+-- ----------------------------------------------------------------------------
+factories["application/composition"]=(function()
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV = context:scope("application/composition", {
+        ["addBranding"] = "presentation/identity",
+        ["addHitman"] = "experiences/contract_agency",
+        ["addInterfaceSettings"] = "presentation/preferences",
+        ["addNetworkDefense"] = "network/defense_controls",
+        ["addOnlineTools"] = "network/session_tools",
+        ["addPracticalTools"] = "agent/daily_routines",
+        ["addSessionSafety"] = "network/session_guard",
+        ["addWatchDogs"] = "experiences/watch_dogs",
+        ["ammo_mods"] = "equipment/weapon_catalog",
+        ["assembleWorkspace"] = "presentation/navigation",
+        ["combat_weapons"] = "equipment/weapon_catalog",
+        ["funfeatures"] = "experiences/activity_catalog",
+        ["heroMenu"] = "agent/power_systems",
+        ["lobby"] = "network/control_catalog",
+        ["misc"] = "presentation/studio_catalog",
+        ["proofs"] = "social/player_catalog",
+        ["protections"] = "network/control_catalog",
+        ["root"] = "presentation/workspace_state",
+        ["self"] = "agent/control_catalog",
+        ["selfVeh"] = "agent/control_catalog",
+        ["selfWorld"] = "agent/control_catalog",
+        ["util"] = "application/task_state",
+        ["weapon_mods"] = "equipment/weapon_catalog",
+        ["weapon_options"] = "equipment/weapon_catalog"
+    })
+
+
+    -- Implementation --------------------------------------------------------
+addOnlineTools(root)
+addSessionSafety(lobby,protections,proofs)
+addWatchDogs(root)
+addInterfaceSettings(misc,funfeatures)
+addHitman(funfeatures)
+addPracticalTools(self,selfVeh)
+addNetworkDefense(protections)
+addBranding(misc)
+assembleWorkspace({self=self,car=selfVeh,world=selfWorld,hero=heroMenu,weapons=weapon_options,
+    combat=combat_weapons,ammo=ammo_mods,effects=weapon_mods,fun=funfeatures,lobby=lobby,settings=misc})
+util.ready()
+
+    -- Public bindings -------------------------------------------------------
+    return {
+
+    }
+end
+
+end)()
+-- [/MC:application/composition]
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:application/diagnostics] 01.02 / DIAGNOSTICS
+-- Collect runtime diagnostics and present actionable error messages.
+-- ----------------------------------------------------------------------------
+factories["application/diagnostics"]=(function()
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV = context:scope("application/diagnostics", {
+        ["GUI"] = "presentation/localization",
+        ["I18N"] = "presentation/localization",
+        ["util"] = "application/task_state"
+    })
+
+
+    -- Implementation --------------------------------------------------------
+local function now_ms() return Time.GetEpocheMs() end
+-- BRAND LABEL BEGIN
+local function brandLabel(text)
+    return tostring(text or ""):gsub("MeloCatScr Script","MeloCatScr")
+end
+-- BRAND LABEL END
+local function toast(text) GUI.AddToast("MeloCatScr", brandLabel(text), 5000) end
+util.toast = toast
+util.joaat = Utils.Joaat
+local errorHistory={}
+local function report(text)
+    local full=tostring(text)
+    if Logger and Logger.LogInfo then pcall(Logger.LogInfo,"[MeloCatScr] "..brandLabel(full)) end
+    errorHistory[#errorHistory+1]=full:sub(1,16000)
+    while #errorHistory>20 do table.remove(errorHistory,1) end
+    if FileMgr and FileMgr.WriteFileContent then
+        local errPath=meloDataPath("MeloCatScrErrors.txt")
+        if errPath then
+            local ok,result=pcall(FileMgr.WriteFileContent,errPath,"MeloCatScr Revision=2026-09-29.4\n\n"..table.concat(errorHistory,"\n\n"),false)
+            if ok and result==true then meloDropLegacy("MeloCatScrErrors.txt") end
+        end
+    end
+    local first=full:match("[^\r\n]+") or full
+    toast(first:sub(1,180).."\n"..I18N.text("Details saved to MeloCatScrErrors.txt"))
+end
+
+    -- Public bindings -------------------------------------------------------
+    return {
+        brandLabel = { get = function() return brandLabel end, set = function(value) brandLabel = value end },
+        now_ms = { get = function() return now_ms end, set = function(value) now_ms = value end },
+        report = { get = function() return report end, set = function(value) report = value end },
+        toast = { get = function() return toast end, set = function(value) toast = value end }
+    }
+end
+
+end)()
+-- [/MC:application/diagnostics]
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:application/event_bindings] 01.03 / EVENT BINDINGS
+-- Bridge host events to player, entity and application state.
+-- ----------------------------------------------------------------------------
+factories["application/event_bindings"]=(function()
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV = context:scope("application/event_bindings", {
+        ["I18N"] = "presentation/localization",
+        ["ImGui"] = "presentation/localization",
+        ["debugMessages"] = "presentation/control_registry",
+        ["deleteOwned"] = "world/entity_registry",
+        ["enqueue"] = "application/task_dispatcher",
+        ["eventIds"] = "application/task_state",
+        ["now_ms"] = "application/diagnostics",
+        ["panel"] = "presentation/workspace_state",
+        ["players"] = "world/roster_state",
+        ["refs"] = "presentation/workspace_state",
+        ["registerPlayer"] = "world/player_directory",
+        ["selectedNodes"] = "presentation/workspace_state",
+        ["util"] = "application/task_state"
+    })
+
+
+    -- Implementation --------------------------------------------------------
+util.create_tick_handler(function()
+    if now_ms() < panel.refresh then return end
+    panel.refresh = now_ms() + 1000
+    panel.localPlayer=players.user()
+    for pid = 0, 31 do
+        panel.active[pid] = players.exists(pid)
+        panel.names[pid] = panel.active[pid] and players.get_name(pid) or I18N.text("vazio")
+        panel.players[pid + 1] = tostring(pid) .. " - " .. panel.names[pid]
+        if panel.active[pid] then registerPlayer(pid) end
+    end
+end)
+eventIds[#eventIds + 1] = EventMgr.RegisterHandler(eLuaEvent.ON_PLAYER_JOIN, function(pid)
+    enqueue(function() registerPlayer(pid) end)
+end)
+eventIds[#eventIds + 1] = EventMgr.RegisterHandler(eLuaEvent.ON_PLAYER_LEFT, function(pid)
+    for _, ref in pairs(refs) do
+        if ref.pid == pid then
+            local previousGeneration = ref.generation
+            ref.generation = ref.generation + 1
+            if ref.kind == eFeatureType.Toggle then ref.value = false; ref.feature:SetBoolValue(false) end
+            enqueue(function() deleteOwned(ref, previousGeneration) end)
+        end
+    end
+    selectedNodes[pid] = nil
+    panel.active[pid] = false
+end)
+eventIds[#eventIds + 1] = EventMgr.RegisterHandler(eLuaEvent.ON_PRESENT, function()
+    if next(debugMessages) then
+        ImGui.Begin("MeloCatScr / Deteccoes", true, 0)
+        for message, expiry in pairs(debugMessages) do
+            if expiry < now_ms() then debugMessages[message] = nil else ImGui.Text(message) end
+        end
+        ImGui.End()
+    end
+end)
+
+    -- Public bindings -------------------------------------------------------
+    return {
+
+    }
+end
+
+end)()
+-- [/MC:application/event_bindings]
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:application/lifecycle] 01.04 / LIFECYCLE
+-- Own startup, recurring updates and shutdown registration.
+-- ----------------------------------------------------------------------------
+factories["application/lifecycle"]=(function()
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV = context:scope("application/lifecycle", {
+        ["ClickGUI"] = "presentation/localization",
+        ["FeatureMgr"] = "presentation/localization",
+        ["I18N"] = "presentation/localization",
+        ["STREAMING"] = "platform/native_gateway",
+        ["WEAPON"] = "platform/native_gateway",
+        ["allocations"] = "world/resource_state",
+        ["cleanups"] = "application/task_state",
+        ["deleteOwned"] = "world/entity_registry",
+        ["enqueue"] = "application/task_dispatcher",
+        ["entities"] = "world/resource_state",
+        ["eventIds"] = "application/task_state",
+        ["jobs"] = "application/task_state",
+        ["memory"] = "world/resource_state",
+        ["modelHashes"] = "world/resource_state",
+        ["now_ms"] = "application/diagnostics",
+        ["players"] = "world/roster_state",
+        ["refs"] = "presentation/workspace_state",
+        ["releaseJob"] = "application/task_release",
+        ["report"] = "application/diagnostics",
+        ["runningJob"] = "application/task_state",
+        ["spawned"] = "world/resource_state",
+        ["stopped"] = "application/task_state",
+        ["tickers"] = "application/task_state",
+        ["taskEngine"]="application/task_engine",
+        ["toast"] = "application/diagnostics",
+        ["util"] = "application/task_state",
+        ["weaponHashes"] = "world/resource_state"
+    })
+
+
+    -- Implementation --------------------------------------------------------
+function util.ready()
+    local total, localCount, playerCount = 0, 0, 0
+    for _, ref in pairs(refs) do
+        if not ref.child then
+            total = total + 1
+            if ref.pid then playerCount = playerCount + 1 else localCount = localCount + 1 end
+        end
+    end
+    local status = {"MeloCatScr layout=12", "Version=1.1.0 / Layout=Command Deck", "Arquitetura=51 modulos; descritores, rotas e motor de tarefas", "Navegacao=barra lateral, cabecalho, trilha e paginas por area", "Arsenal=bancada, mira, municao, efeitos e disparos", "Pessoas=dossie, cooperacao, encenacoes, interacoes e gestao", "Experiencias=cenas, Watch Dogs e Hitman", "Hitman=eliminacao confirmada, identificacao, fuga e placar local", "Persistencia=leitura protegida e slots independentes", "Lua=" .. tostring(_VERSION), "Inicializacao concluida",
+        "Opcoes locais=" .. localCount, "Opcoes de jogadores registrados=" .. playerCount,
+        "Total de controles=" .. total, "Areas=Home, Players, Self, Weapons, Vehicles, World, Fun, Online, Protections, Settings; Hitman=contratos e fuga"}
+    if Cherax and Cherax.GetVersion then
+        local ok, version = pcall(Cherax.GetVersion)
+        if ok then status[#status + 1] = "Cherax=" .. tostring(version) end
+    end
+    if FileMgr and FileMgr.WriteFileContent then
+        local statusPath=meloDataPath("MeloCatScrStatus.txt")
+        if statusPath then
+            local ok,result=pcall(FileMgr.WriteFileContent,statusPath,table.concat(status,"\n"),false)
+            if ok and result==true then meloDropLegacy("MeloCatScrStatus.txt") end
+        end
+    end
+    toast(I18N.text("Carregado: ") .. localCount .. I18N.text(" controles locais. Navegue pela barra lateral e use a busca do cabecalho."))
+end
+Script.QueueJob(function()
+    while taskEngine.pump(now_ms()) do util.yield() end
+end)
+
+EventMgr.RegisterHandler(eLuaEvent.ON_UNLOAD, function()
+    taskEngine.cancelPending()
+    for _, fn in ipairs(cleanups) do pcall(fn) end
+    local handles = {}
+    for h in pairs(spawned) do handles[#handles + 1] = h end
+    for _, h in ipairs(handles) do pcall(entities.delete_by_handle, h) end
+    for ptr in pairs(allocations) do memory.free(ptr) end
+    for hash in pairs(modelHashes) do STREAMING.SET_MODEL_AS_NO_LONGER_NEEDED(hash) end
+    for hash in pairs(weaponHashes) do WEAPON.REMOVE_WEAPON_ASSET(hash) end
+    for _, id in ipairs(eventIds) do EventMgr.RemoveHandler(id) end
+    for id in pairs(refs) do FeatureMgr.RemoveFeature(id) end
+    ClickGUI.RemoveTab("MeloCatScr")
+    ClickGUI.RemovePlayerTab("MeloCatScr")
+end)
+
+    -- Public bindings -------------------------------------------------------
+    return {
+
+    }
+end
+
+end)()
+-- [/MC:application/lifecycle]
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:application/task_dispatcher] 01.05 / TASK DISPATCHER
+-- Dispatch queued work through the shared application state.
+-- ----------------------------------------------------------------------------
+factories["application/task_dispatcher"]=(function()
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV = context:scope("application/task_dispatcher", {
+        ["cleanups"] = "application/task_state",
+        ["jobs"] = "application/task_state",
+        ["runningJob"] = "application/task_state",
+        ["tickers"] = "application/task_state",
+        ["util"] = "application/task_state"
+    })
+
+
+    -- Implementation --------------------------------------------------------
+local function enqueue(fn, ref)
+    local job={thread=coroutine.create(fn),due=0,ref=ref,generation=ref and ref.generation}
+    jobs[#jobs+1]=job
+    return job
+end
+function util.yield(ms)
+    if runningJob and coroutine.running()==runningJob.thread then return coroutine.yield(ms or 0) end
+    return Script.Yield(ms or 0)
+end
+util.yield_once = util.yield
+function util.stop_thread() coroutine.yield("stop") end
+function util.create_tick_handler(fn) tickers[#tickers + 1] = {fn = fn} end
+function util.on_stop(fn) cleanups[#cleanups + 1] = fn end
+
+    -- Public bindings -------------------------------------------------------
+    return {
+        enqueue = { get = function() return enqueue end, set = function(value) enqueue = value end }
+    }
+end
+
+end)()
+-- [/MC:application/task_dispatcher]
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:application/task_engine] 01.06 / TASK ENGINE
+-- Advance scheduled tasks and handle cancellation and recovery.
+-- ----------------------------------------------------------------------------
+factories["application/task_engine"]=(function()
+-- One execution engine owns scheduling, cancellation, wakeups and callback failure.
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV=context:scope("application/task_engine", {
+        ["deleteOwned"]="world/entity_registry",
+        ["enqueue"]="application/task_dispatcher",
+        ["jobs"]="application/task_state",
+        ["players"]="world/roster_state",
+        ["releaseJob"]="application/task_release",
+        ["report"]="application/diagnostics",
+        ["runningJob"]="application/task_state",
+        ["stopped"]="application/task_state",
+        ["tickers"]="application/task_state",
+    })
+
+    -- Implementation --------------------------------------------------------
+    local TaskEngine={}
+    local function current(job)
+        local owner=job.ref
+        return not owner or (job.generation==owner.generation and (not owner.pid or players.exists(owner.pid)))
+    end
+    local function recover(job,message)
+        local owner=job.ref
+        report((owner and owner.path..": " or "")..tostring(message))
+        if job.ticker then job.ticker.disabled=true end
+        if not owner then return end
+        owner.generation=owner.generation+1
+        local toggle=owner.kind==eFeatureType.Toggle
+        if toggle then owner.value=false; owner.feature:SetBoolValue(false) end
+        enqueue(function()
+            deleteOwned(owner)
+            if toggle then owner.callback(false) end
+        end)
+    end
+    local function advance(job,time)
+        if not current(job) then releaseJob(job); return end
+        if time<job.due then jobs[#jobs+1]=job; return end
+        runningJob=job
+        local ok,result=coroutine.resume(job.thread)
+        runningJob=nil
+        if not ok then recover(job,result) end
+        if not ok or result=="stop" or coroutine.status(job.thread)=="dead" then
+            releaseJob(job)
+        else
+            job.due=time+math.max(0,tonumber(result) or 0)
+            jobs[#jobs+1]=job
+        end
+    end
+    function TaskEngine.pump(time)
+        if stopped then return false end
+        for _,ticker in ipairs(tickers) do
+            if not ticker.busy and not ticker.disabled then
+                ticker.busy=true
+                local job=enqueue(function() if ticker.fn()==false then ticker.disabled=true end end)
+                job.ticker=ticker
+            end
+        end
+        local batch=jobs
+        jobs={}
+        for _,job in ipairs(batch) do advance(job,time) end
+        return true
+    end
+    function TaskEngine.cancelPending()
+        stopped=true
+        local pending=jobs; jobs={}
+        for _,job in ipairs(pending) do releaseJob(job) end
+    end
+    -- Public bindings -------------------------------------------------------
+    return {taskEngine={get=function() return TaskEngine end}}
+end
+
+end)()
+-- [/MC:application/task_engine]
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:application/task_release] 01.07 / TASK RELEASE
+-- Release active tasks and their associated resources.
+-- ----------------------------------------------------------------------------
+factories["application/task_release"]=(function()
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV = context:scope("application/task_release", {
+        ["allocations"] = "world/resource_state",
+        ["memory"] = "world/resource_state"
+    })
+
+
+    -- Implementation --------------------------------------------------------
+local function releaseJob(job)
+    if job.finalize then pcall(job.finalize); job.finalize=nil end
+    for ptr, owner in pairs(allocations) do if owner == job then memory.free(ptr) end end
+    if job.ticker then job.ticker.busy = false end
+    if coroutine.status(job.thread) ~= "dead" then coroutine.close(job.thread) end
+end
+
+    -- Public bindings -------------------------------------------------------
+    return {
+        releaseJob = { get = function() return releaseJob end, set = function(value) releaseJob = value end }
+    }
+end
+
+end)()
+-- [/MC:application/task_release]
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:application/task_state] 01.08 / TASK STATE
+-- Define shared task queues and scheduling state.
+-- ----------------------------------------------------------------------------
+factories["application/task_state"]=(function()
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV=context:scope("application/task_state", {
+    })
+
+    -- Implementation --------------------------------------------------------
+local util={}
+local stopped,runningJob=false,nil
+local jobs,tickers,cleanups,eventIds={},{},{},{}
+
+    -- Public bindings -------------------------------------------------------
+    return {
+        cleanups={get=function() return cleanups end,set=function(value) cleanups=value end},
+        eventIds={get=function() return eventIds end,set=function(value) eventIds=value end},
+        jobs={get=function() return jobs end,set=function(value) jobs=value end},
+        runningJob={get=function() return runningJob end,set=function(value) runningJob=value end},
+        stopped={get=function() return stopped end,set=function(value) stopped=value end},
+        tickers={get=function() return tickers end,set=function(value) tickers=value end},
+        util={get=function() return util end,set=function(value) util=value end},
+    }
+end
+
+end)()
+-- [/MC:application/task_state]
+
+
+-- ============================================================================
+-- 02 / MELOCAT PRESENTATION / Navigation and visual identity
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- [MC:presentation/control_registry] 02.01 / CONTROL REGISTRY
+-- Register menu controls, aliases and their stable identities.
+-- ----------------------------------------------------------------------------
+factories["presentation/control_registry"]=(function()
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV = context:scope("presentation/control_registry", {
+        ["FeatureMgr"] = "presentation/localization",
+        ["registerControl"] = "presentation/feature_runtime",
+        ["scheduleTransition"] = "presentation/feature_runtime",
+        ["I18N"] = "presentation/localization",
+        ["aliases"] = "presentation/workspace_state",
+        ["brandLabel"] = "application/diagnostics",
+        ["deleteOwned"] = "world/entity_registry",
+        ["enqueue"] = "application/task_dispatcher",
+        ["layoutRevision"] = "presentation/workspace_state",
+        ["menu"] = "presentation/workspace_state",
+        ["now_ms"] = "application/diagnostics",
+        ["playerRoots"] = "presentation/workspace_state",
+        ["players"] = "world/roster_state",
+        ["refs"] = "presentation/workspace_state",
+        ["root"] = "presentation/workspace_state",
+        ["selectedNodes"] = "presentation/workspace_state",
+        ["stopped"] = "application/task_state",
+        ["toast"] = "application/diagnostics",
+        ["util"] = "application/task_state"
+    })
+
+
+    -- Implementation --------------------------------------------------------
+local debugMessages = {}
+function util.draw_debug_text(text) debugMessages[text] = now_ms() + 250 end
+local legacyReason = "Evento de rede antigo: precisa ser validado para a versao atual do GTA."
+local unsupported = {
+    ["Give Script Host"] = "Transferir script host nao tem suporte nesta adaptacao.",
+    ["Custom Notification"] = legacyReason, ["Custom Label"] = legacyReason,
+    ["Force Interior State"] = legacyReason, ["SMS Spam"] = legacyReason,
+    ["Invite Notification"] = legacyReason, ["Invite Notification v2"] = legacyReason,
+    ["Checkpoint Notification"] = legacyReason, ["Character Notification"] = legacyReason,
+    ["SMS Label"] = legacyReason, ["Error Label"] = legacyReason,
+    ["Remove Player Godmode"] = legacyReason, ["Remove Godmode Gun"] = legacyReason,
+    ["Nasa Kick"] = legacyReason, ["Quandale Dingle"] = legacyReason,
+    ["Transaction Error"] = "Dependia de um comando antigo e de uma atividade removida do jogo."
+}
+function util.trigger_script_event() error(legacyReason) end
+local function create(parent,name,kind,description,callback,commands)
+    return registerControl({parent=parent,name=name,kind=kind,description=description,execute=callback,commands=commands})
+end
+local function limitation(parent, name)
+    if not parent or not parent.path then return nil end
+    if parent.path:find("/General/Teleport/Teleport Player To...", 1, true) then return nil end
+    if parent.path:find("/Teleport Player", 1, true) then return "Teleporte remoto: evento de rede antigo que precisa ser validado para a versao atual." end
+    return unsupported[name]
+end
+function menu.my_root() return root end
+function menu.player_root(pid)
+    if not playerRoots[pid] then playerRoots[pid] = {name = "MeloCatScr / Jogador " .. pid, path = "MeloCatScr/Player" .. pid, items = {}, pid = pid} end
+    return playerRoots[pid]
+end
+function menu.list(parent, name, commands, desc)
+    local node
+    local ref = create(parent, name, eFeatureType.Button, desc, function() selectedNodes[parent.pid or "main"] = node end, commands)
+    node = {name = ref.name, path = ref.path, items = {}, parent = parent, pid = parent.pid}
+    ref.child = node
+    return node
+end
+function menu.divider(parent, name) if parent and parent.items then parent.items[#parent.items + 1] = {label = name} end end
+function menu.action(parent, name, commands, desc, callback, inputCallback)
+    local reason = limitation(parent, name)
+    if reason then
+        local ref
+        ref=create(parent,name.." [indisponivel]",eFeatureType.Button,reason,function()
+            if ref.recovered then ref.recovered() else toast(ref.unavailableReason or reason) end
+        end)
+        ref.unavailableReason=reason
+        return ref
+    end
+    if inputCallback then
+        local input = create(parent, name .. " / texto", eFeatureType.InputText, desc)
+        input.feature:SetStringValue("")
+        local action = create(parent, name, eFeatureType.Button, desc, function() inputCallback(input.feature:GetStringValue()) end, commands)
+        local group = {name = name}
+        input.configGroup, action.configGroup = group, group
+        return action
+    end
+    return create(parent, name, eFeatureType.Button, desc, callback, commands)
+end
+function menu.toggle(parent, name, commands, desc, callback)
+    local reason = limitation(parent, name)
+    if reason then return menu.action(parent, name, commands, desc, callback) end
+    return create(parent, name, eFeatureType.Toggle, desc, callback, commands)
+end
+function menu.toggle_loop(parent, name, commands, desc, callback)
+    local ref
+    ref = menu.toggle(parent, name, commands, desc, function(enabled)
+        if not enabled then return end
+        while ref.value do callback(); util.yield() end
+    end)
+    return ref
+end
+function menu.set_value(ref,value)
+    if ref.value==value then return end
+    ref.feature:SetBoolValue(value)
+    scheduleTransition(ref,value)
+end
+function menu.get_value(ref) return ref and ref.value or false end
+function menu.click_slider(parent, name, commands, desc, low, high, default, step, fn)
+    local slider = create(parent, name .. " / quantidade", eFeatureType.SliderInt, desc)
+    slider.feature:SetLimitValues(low, high):SetStepSize(step):SetIntValue(default)
+    local action = menu.action(parent, name, commands, desc, function() fn(slider.feature:GetIntValue()) end)
+    local group = {name = name}
+    slider.configGroup, action.configGroup = group, group
+    return action
+end
+function menu.slider_text(parent, name, commands, desc, options, fn)
+    local ref = create(parent, name, eFeatureType.Combo, desc, function(f)
+        local index = f:GetListIndex() + 1
+        fn(index, options[index])
+    end, commands)
+    ref.feature:SetList(options):SetListIndex(0)
+    return ref
+end
+function menu.action_slider(parent, name, commands, desc, options, fn)
+    local combo = menu.slider_text(parent, name .. " / tipo", {}, desc, options, function() end)
+    local action = menu.action(parent, name, commands, desc, function()
+        local index = combo.feature:GetListIndex() + 1
+        fn(index, options[index])
+    end)
+    local group = {name = name}
+    combo.configGroup, action.configGroup = group, group
+    return action
+end
+function menu.hyperlink(parent, name, url)
+    return menu.action(parent, name, {}, url, function() Utils.SetClipBoardText(url, name); toast(I18N.text("Link copiado: ") .. url) end)
+end
+function menu.trigger_commands(command)
+    local name, value = command:match("^(%S+)%s*(.*)$")
+    if aliases[name] and (value == "on" or value == "off") then
+        menu.set_value(aliases[name], value == "on")
+    elseif name == "players" then
+        local names = {}
+        for _, pid in ipairs(players.list(true)) do names[#names + 1] = pid .. ": " .. players.get_name(pid) end
+        toast(table.concat(names, "\n"))
+    else error("Comando antigo sem equivalente: " .. tostring(command)) end
+end
+
+    -- Public bindings -------------------------------------------------------
+    return {
+        create = { get = function() return create end, set = function(value) create = value end },
+        debugMessages = { get = function() return debugMessages end, set = function(value) debugMessages = value end }
+    }
+end
+
+end)()
+-- [/MC:presentation/control_registry]
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:presentation/feature_runtime] 02.02 / FEATURE RUNTIME
+-- Translate control descriptors into host features and callbacks.
+-- ----------------------------------------------------------------------------
+factories["presentation/feature_runtime"]=(function()
+-- Descriptor-based control creation, with one event dispatcher for all controls.
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV=context:scope("presentation/feature_runtime", {
+        ["FeatureMgr"]="presentation/localization",
+        ["aliases"]="presentation/workspace_state",
+        ["brandLabel"]="application/diagnostics",
+        ["deleteOwned"]="world/entity_registry",
+        ["enqueue"]="application/task_dispatcher",
+        ["layoutRevision"]="presentation/workspace_state",
+        ["players"]="world/roster_state",
+        ["refs"]="presentation/workspace_state",
+        ["stopped"]="application/task_state",
+    })
+
+    -- Implementation --------------------------------------------------------
+    local function scheduleTransition(control,value)
+        if control.value==value then return false end
+        control.value=value
+        control.generation=control.generation+1
+        enqueue(function()
+            deleteOwned(control)
+            control.callback(value)
+        end,control)
+        return true
+    end
+    local function dispatch(control,feature)
+        if stopped or (control.pid and not players.exists(control.pid)) then return end
+        local state=context:read("presentation/workspace_state","panel")
+        for i=#state.recent,1,-1 do if state.recent[i]==control.id then table.remove(state.recent,i) end end
+        table.insert(state.recent,1,control.id);if #state.recent>12 then table.remove(state.recent) end
+        if control.kind==eFeatureType.Toggle then
+            scheduleTransition(control,feature:IsToggled())
+        elseif control.callback then
+            enqueue(function() control.callback(feature) end,control)
+        end
+    end
+    local function registerControl(spec)
+        assert(spec.parent and spec.parent.items,"Control needs a registration owner")
+        local path=spec.parent.path.."/"..spec.name
+        local id=Utils.Joaat(path)
+        assert(not refs[id],"Duplicate control ID: "..path)
+        local control={id=id,name=brandLabel(spec.name),path=path,parent=spec.parent,pid=spec.parent.pid,
+            generation=0,value=false,kind=spec.kind,callback=spec.execute}
+        local feature=FeatureMgr.AddFeature(id,control.name,spec.kind,brandLabel(spec.description),
+            function(f) dispatch(control,f) end,true)
+        control.feature=feature
+        feature:SetSaveable(false)
+        if spec.kind==eFeatureType.Toggle then feature:SetBoolValue(false) end
+        refs[id]=control
+        spec.parent.items[#spec.parent.items+1]=control
+        for _,alias in ipairs(spec.commands or {}) do if alias~="" then aliases[alias]=control end end
+        layoutRevision=layoutRevision+1
+        return control
+    end
+    -- Public bindings -------------------------------------------------------
+    return {registerControl={get=function() return registerControl end},scheduleTransition={get=function() return scheduleTransition end}}
+end
+
+end)()
+-- [/MC:presentation/feature_runtime]
+
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/graphics] Drawing and visual effects
+-- Owner: presentation/identity; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.GRAPHICS=function(native,bind)
+    native.GRAPHICS = {}
+    native.GRAPHICS.DRAW_LIGHT_WITH_RANGE = bind(0xF2A1B2771A01DBD4, "InvokeVoid", "fffiiiff")
+    native.GRAPHICS.DRAW_POLY = bind(0xAC26716048436851, "InvokeVoid", "fffffffffiiii")
+    native.GRAPHICS.SET_NIGHTVISION = bind(0x18F621F7A5B1F85D, "InvokeVoid", "b")
+    native.GRAPHICS.GET_USINGNIGHTVISION = bind(0x2202A3F42C8E5F79, "InvokeBool", "")
+    native.GRAPHICS.SET_SEETHROUGH = bind(0x7E08924259E08CE0, "InvokeVoid", "b")
+    native.GRAPHICS.GET_USINGSEETHROUGH = bind(0x44B80ABAB9D80BD3, "InvokeBool", "")
+    native.GRAPHICS.DRAW_LINE = bind(0x6B7256074AE34680, "InvokeVoid", "ffffffiiii")
+    native.GRAPHICS.DRAW_MARKER = bind(0x28477EC23D892089, "InvokeVoid", "iffffffffffffiiiibbibssb")
+    native.GRAPHICS.DRAW_SPOT_LIGHT = bind(0xD0F64B265C8C8B33, "InvokeVoid", "ffffffiiifffff")
+    native.GRAPHICS.SET_DRAW_ORIGIN = bind(0xAA0008F3BBB8F416, "InvokeVoid", "fffb")
+    native.GRAPHICS.CLEAR_DRAW_ORIGIN = bind(0xFF0B610F6BE0D7AF, "InvokeVoid", "")
+    native.GRAPHICS.REQUEST_STREAMED_TEXTURE_DICT = bind(0xDFA2EF8E04127DD5, "InvokeVoid", "sb")
+    native.GRAPHICS.HAS_STREAMED_TEXTURE_DICT_LOADED = bind(0x0145F696AAAAD2E4, "InvokeBool", "s")
+    native.GRAPHICS.SET_STREAMED_TEXTURE_DICT_AS_NO_LONGER_NEEDED = bind(0xBE2CACCF5A8AA805, "InvokeVoid", "s")
+    native.GRAPHICS.CLEAR_TIMECYCLE_MODIFIER = bind(0x0F07E7745A236711, "InvokeVoid", "")
+    native.GRAPHICS.ANIMPOSTFX_STOP_ALL = bind(0xB4EDDC19532BFB85, "InvokeVoid", "")
+    native.GRAPHICS.DRAW_RECT = bind(0x3A618A217E5154F0, "InvokeVoid", "ffffiiiib")
+    native.GRAPHICS.GET_ASPECT_RATIO = bind(0xF1307EF624A80D87, "InvokeFloat", "b")
+    native.GRAPHICS.GET_SCREEN_COORD_FROM_WORLD_COORD = bind(0x34E82F05DF2974F5, "InvokeBool", "fffii")
+end
+-- [/MC:natives/graphics]
+
+-- ----------------------------------------------------------------------------
+-- [MC:presentation/identity] 02.03 / IDENTITY
+-- Present MeloCat branding, notifications and loading visuals.
+-- ----------------------------------------------------------------------------
+factories["presentation/identity"]=(function()
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV = context:scope("presentation/identity", {
+        ["HUD"] = "platform/native_gateway",
+        ["I18N"] = "presentation/localization",
+        ["ImGui"] = "presentation/localization",
+        ["NETWORK"] = "platform/native_gateway",
+        ["brandLabel"] = "application/diagnostics",
+        ["create"] = "presentation/control_registry",
+        ["displayName"] = "social/interaction_catalog",
+        ["eventIds"] = "application/task_state",
+        ["gunsmithScreenActive"] = "presentation/localization",
+        ["layoutRevision"] = "presentation/workspace_state",
+        ["menu"] = "presentation/workspace_state",
+        ["now_ms"] = "application/diagnostics",
+        ["panel"] = "presentation/workspace_state",
+        ["players"] = "world/roster_state",
+        ["refs"] = "presentation/workspace_state",
+        ["resolveNative"] = "platform/control_discovery",
+        ["stopped"] = "application/task_state",
+        ["string"] = "presentation/localization",
+        ["toast"] = "application/diagnostics",
+        ["uiAccent"] = "presentation/workspace_state",
+        ["util"] = "application/task_state"
+    })
+
+
+    -- Implementation --------------------------------------------------------
+-- Porta da interface: o ClickGUI so mostra o menu quando a entrada terminar.
+local uiGateOpen=nil
+-- BRAND LOGO BEGIN: original PNG, managed Cherax texture, no gameplay natives in rendering.
+-- Native support is discovered by exact untranslated names from TranslationFile.json.
+-- Old network events are never replayed. A matched name alone is insufficient.
+local function addAvailabilityReview(misc)
+    local page=menu.list(misc,"Compatibilidade",{},"Revisa controles e grava os motivos das limitacoes.")
+    misc.viewTabs[#misc.viewTabs+1]={name="Compatibilidade",node=page}
+    local candidates={}
+    local specs={
+        ["Custom Notification"]={"Notification","Send Notification","Enviar aviso"},
+        ["Custom Label"]={"Notify Label","Send Notify Label","Enviar rotulo"},
+        ["SMS Spam"]={"Text Message","Send Text Message","SMS"},
+    }
+    local function discover()
+        for _,r in pairs(refs) do if r.unavailableReason and not r.supportRefresh and not candidates[r.id] then
+            local old=r.path:match("/([^/]+) %[%s*indisponivel%s*%]$")
+            local c={ref=r,spec=specs[old],reason=r.unavailableReason}; candidates[r.id]=c
+            if c.spec then
+                c.input=create(r.parent,c.spec[3].." / texto",eFeatureType.InputText,"Texto do aviso ou codigo de rotulo GTA. Envio manual ao jogador selecionado.")
+                c.input.feature:SetStringValue("")
+                local group={name=c.spec[3]}; c.input.configGroup=group; r.configGroup=group
+            end
+        end end
+    end
+    local function exact(pid,name,kind)
+        return resolveNative(name,kind,pid)
+    end
+    local function refreshOne(c)
+        local r,s=c.ref,c.spec
+        if not s then return end
+        local input=exact(r.pid,s[1],eFeatureType.InputText)
+        local send=exact(r.pid,s[2],eFeatureType.Button)
+        local isLocal=r.pid==players.user() and s[1]~="Text Message"
+        c.available=isLocal or input~=nil and send~=nil
+        local label=s[3]..(c.available and "" or " [indisponivel]")
+        if r.name~=label then displayName(r,label) end
+        r.unavailableReason=c.available and nil or ("Cherax precisa expor "..s[1].." (texto) e "..s[2].." (botao) para este jogador.")
+        if r.feature.SetDesc then r.feature:SetDesc(r.unavailableReason or (isLocal and "Shows a notification on your own screen." or "Usa os controles atuais do Cherax. O destinatario pode bloquear a mensagem.")) end
+        -- Resolve again at execution; never hold stale native feature objects across sessions.
+        r.recovered=function()
+            refreshOne(c)
+            if not c.available then toast(r.unavailableReason); return end
+            if not isLocal and (not players.exists(r.pid) or not NETWORK.NETWORK_IS_IN_SESSION() or NETWORK.NETWORK_IS_IN_TRANSITION()
+                or NETWORK.NETWORK_IS_SESSION_BUSY()) then toast(I18N.text("Aguarde uma sessao estavel.")); return end
+            if c.next and now_ms()<c.next then toast(I18N.text("Aguarde tres segundos entre avisos.")); return end
+            local value=c.input.feature:GetStringValue():gsub("[%c]"," ")
+            if not value:find("%S") or #value>140 then toast(I18N.text("Use de 1 a 140 bytes de texto.")); return end
+            if s[1]=="Notify Label" and not value:match("^[%w_]+$") then toast(I18N.text("Use um codigo de rotulo GTA, como uma chave de texto; sem espacos.")); return end
+            if isLocal then
+                if s[1]=="Notify Label" then
+                    value=HUD.GET_FILENAME_FOR_AUDIO_CONVERSATION(value)
+                    if not value or value=="NULL" or value=="" then toast("Unknown GTA text label."); return end
+                end
+                c.next=now_ms()+3000
+                HUD.BEGIN_TEXT_COMMAND_THEFEED_POST("STRING")
+                -- Split only at UTF-8 boundaries; the GTA text component has a byte limit.
+                while #value>0 do
+                    local last=math.min(90,#value)
+                    while last<#value and value:byte(last+1)>=128 and value:byte(last+1)<192 do last=last-1 end
+                    HUD.ADD_TEXT_COMPONENT_SUBSTRING_PLAYER_NAME(value:sub(1,last)); value=value:sub(last+1)
+                end
+                HUD.END_TEXT_COMMAND_THEFEED_POST_TICKER(false,false)
+                return
+            end
+            local f,b=exact(r.pid,s[1],eFeatureType.InputText),exact(r.pid,s[2],eFeatureType.Button)
+            if not f or not b then toast(I18N.text("O controle do Cherax mudou. Atualize a compatibilidade.")); return end
+            local old=f:GetStringValue()
+            c.next=now_ms()+3000
+            local ok=pcall(function() f:SetStringValue(value); b:TriggerCallback() end)
+            pcall(function() f:SetStringValue(old) end)
+            toast(ok and "Envio solicitado ao Cherax. O recebimento depende do destinatario." or "Cherax nao conseguiu solicitar o envio.")
+        end
+    end
+    local lastWritten
+    local function review(write,quiet)
+        discover()
+        local lines={"MeloCatScr - compatibilidade | Revision=2026-09-29.4","Controles da API sao conferidos por nome, tipo e jogador."}
+        local restored,blocked=0,0
+        for _,c in pairs(candidates) do
+            if c.spec then refreshOne(c) end
+            local reason=c.ref.unavailableReason or c.reason
+            if c.available then restored=restored+1 else blocked=blocked+1 end
+            lines[#lines+1]=(c.available and "DISPONIVEL | " or "SEM SUPORTE | ")..c.ref.path.." | "..(c.available and "Controle original do Cherax." or reason)
+        end
+        for _,r in pairs(refs) do if r.supportRefresh then
+            local f=r.supportRefresh()
+            lines[#lines+1]=(f and "DISPONIVEL | " or "SEM SUPORTE | ")..r.path.." | "..(r.supportSource or "Controle atual do Cherax; requisitos de sessao continuam aplicaveis.")
+        end end
+        table.sort(lines, function(a,b) return a<b end)
+        if write then
+            local path=meloDataPath("MeloCatScrCompatibilidade.txt")
+            local ok,result=false,false
+            local content=table.concat(lines,"\n")
+            if content==lastWritten then ok,result=true,true
+            elseif path and FileMgr.WriteFileContent then
+                ok,result=pcall(FileMgr.WriteFileContent,path,content,false)
+                if ok and result==true then lastWritten=content;meloDropLegacy("MeloCatScrCompatibilidade.txt") end
+            end
+            if quiet then return end
+            toast(string.format("Revisao: %d avisos integrados; %d controles antigos sem suporte. %s",restored,blocked,ok and result==true and "Relatorio salvo em Lua/MeloCatScr/MeloCatScrCompatibilidade.txt." or "Nao foi possivel salvar o relatorio."))
+        end
+    end
+    menu.action(page,"Revisar suporte",{},"Confere todas as opcoes antigas e os destinos Cherax. Salva os motivos em MeloCatScrCompatibilidade.txt.",function() review(true) end)
+    menu.action(page,"Ver limitacoes",{},"Explica as opcoes que continuam bloqueadas.",function()
+        toast(I18N.text("Eventos antigos de propriedades, spam e remocao de godmode continuam bloqueados. Transaction Error dependia de atividade removida. Nasa Kick e Quandale Dingle nao possuem substituto validado."))
+    end)
+    review(true,true)
+    local nextReport=now_ms()+10000
+    local lastPid,nextCheck=nil,0
+    util.create_tick_handler(function()
+        if now_ms()<nextCheck then return end; nextCheck=now_ms()+2000
+        discover()
+        if now_ms()>=nextReport then nextReport=now_ms()+10000; review(true,true) end
+        local pid=panel.selectedPlayer
+        if pid~=nil then
+            lastPid=pid
+            for _,c in pairs(candidates) do if c.ref.pid==pid then refreshOne(c) end end
+            for _,r in pairs(refs) do if r.pid==pid and r.supportRefresh then r.supportRefresh() end end
+        end
+    end)
+end
+
+local function addPresentation(misc)
+    local prefs={notices=1,tips=1,seconds=6,side=1}
+    local path=meloDataPath("MeloCatScrVisual.ini")
+    local readPath=meloReadPath("MeloCatScrVisual.ini")
+    if readPath and FileMgr.ReadFileContent and (not FileMgr.DoesFileExist or FileMgr.DoesFileExist(readPath)) then
+        local ok,value=pcall(FileMgr.ReadFileContent,readPath)
+        if ok and type(value)=="string" and #value<256 then
+            for key,n in value:gmatch("(%a+)=(%d+)") do
+                n=tonumber(n)
+                if prefs[key]~=nil and ((key=="seconds" and n>=3 and n<=12) or (key~="seconds" and n<=1)) then prefs[key]=n end
+            end
+        end
+    end
+    local originalToast=toast
+    local function save()
+        if not path or not FileMgr.WriteFileContent then originalToast("Preferencias visuais: gravacao indisponivel."); return end
+        local ok,v=pcall(FileMgr.WriteFileContent,path,string.format("notices=%d\ntips=%d\nseconds=%d\nside=%d\n",prefs.notices,prefs.tips,prefs.seconds,prefs.side),false)
+        if ok and v==true then meloDropLegacy("MeloCatScrVisual.ini")
+        else originalToast("Nao foi possivel salvar as preferencias visuais.") end
+    end
+    local page=menu.list(misc,"Notificacoes",{},"Avisos locais na lateral, sem enviar mensagens para outros jogadores.")
+    misc.viewTabs[#misc.viewTabs+1]={name="Notificacoes",node=page}
+    local pending,active={},{}
+    local failed=false
+    local function supported() return ImGui.AddText and ImGui.AddRectFilled and ImGui.GetDisplaySize end
+    local function push(value)
+        if stopped or prefs.notices==0 or failed or not supported() then return false end
+        local text=brandLabel(value):gsub("[%c]"," ")
+        for _,q in ipairs(active) do if q.text==text then return true end end
+        for _,q in ipairs(pending) do if q.text==text then return true end end
+        if #pending>=8 then originalToast(value); return true end
+        pending[#pending+1]={text=text}
+        return true
+    end
+    toast=function(value) if not push(value) then originalToast(value) end end
+    util.toast=toast
+    local function toggle(parent,label,key,help)
+        local r=menu.toggle(parent,label,{},help,function(on)
+            prefs[key]=on and 1 or 0
+            if key=="notices" and not on then pending={}; active={} end
+            save()
+        end)
+        r.value=prefs[key]==1; r.feature:SetBoolValue(r.value)
+    end
+    toggle(page,"Avisos laterais","notices","Mostra as mensagens do script em ate tres cartoes. Desligado: usa os avisos padrao do Cherax.")
+    toggle(page,"Dicas iniciais","tips","Mostra duas dicas ao iniciar; nao repete durante a sessao.")
+    local duration=create(page,"Duracao",eFeatureType.SliderInt,"Segundos por aviso.",function(f) prefs.seconds=math.max(3,math.min(12,f:GetIntValue())); save() end)
+    duration.feature:SetLimitValues(3,12):SetStepSize(1):SetIntValue(prefs.seconds)
+    local side=create(page,"Lado",eFeatureType.Combo,"Lateral da tela para os avisos.",function(f) prefs.side=math.max(0,math.min(1,f:GetListIndex())); save() end)
+    side.feature:SetList({"Esquerda","Direita"}):SetListIndex(prefs.side)
+    menu.action(page,"Testar aviso",{},"Mostra um cartao de exemplo.",function() toast(I18N.text("Visual pronto. Ajuste o lado e a duracao em Configuracoes > Notificacoes.")) end)
+    menu.action(page,"Limpar avisos",{},"Fecha os avisos e limpa a fila.",function() pending={}; active={} end)
+    -- UTF-8 characters stay intact, including long names. The full message is logged.
+    local function wrap(text,limit)
+        local chars={}
+        local ok=pcall(function() for _,cp in utf8.codes(text) do chars[#chars+1]=utf8.char(cp) end end)
+        if not ok then chars={}; for c in text:gmatch(".") do chars[#chars+1]=c:match("[%w%p%s]") and c or "?" end end
+        local lines={}; local n=math.min(#chars,limit*4)
+        for start=1,n,limit do lines[#lines+1]=table.concat(chars,"",start,math.min(n,start+limit-1)) end
+        if #chars>n then lines[#lines]=lines[#lines]:sub(1,-1).."..." end
+        return lines
+    end
+    local launched=now_ms()
+    local tips={
+        {at=2000,text="Bem-vindo ao MeloCatScr. Acoes ficam a esquerda; ajustes ficam a direita."},
+        {at=9000,text="Seu visual: logo fixa no topo. Efeitos e avisos podem ser ajustados em Configuracoes."},
+    }
+    local function draw()
+        if gunsmithScreenActive or stopped or prefs.notices==0 or failed or not supported() then return end
+        local w,h=ImGui.GetDisplaySize(); if not w or not h or w<320 or h<200 then return end
+        local now=now_ms()
+        for _,tip in ipairs(tips) do if not tip.done and now-launched>=tip.at then tip.done=true; if prefs.tips==1 then push(tip.text) end end end
+        for i=#active,1,-1 do if now>=active[i].ends then table.remove(active,i) end end
+        local capacity=math.max(1,math.min(3,math.floor((h-90)/120)))
+        while #active<capacity and #pending>0 do
+            local q=table.remove(pending,1); q.start=now; q.ends=now+prefs.seconds*1000
+            active[#active+1]=q
+            if Logger and Logger.LogInfo then Logger.LogInfo("[MeloCatScr aviso] "..q.text) end
+        end
+        local width=math.min(340,w-32)
+        local limit=math.max(20,math.floor((width-32)/8))
+        local y=math.max(24,h*0.12)
+        local acc=uiAccent()
+        local ar,ag,ab=math.floor(acc[1]*255+0.5),math.floor(acc[2]*255+0.5),math.floor(acc[3]*255+0.5)
+        for _,q in ipairs(active) do
+            local t=math.min(1,(now-q.start)/300,(q.ends-now)/400)
+            local alpha=math.floor(math.max(0,t)*255)
+            local slide=(1-math.max(0,t))*(width+20)
+            local x=prefs.side==1 and w-width-16+slide or 16-slide
+            local lines=wrap(I18N.text(q.text),limit); local height=45+#lines*16
+            -- Cartao de aviso: fundo painel; barra lateral, titulo e barra de tempo na cor de destaque atual.
+            ImGui.AddRectFilled(x,y,x+width,y+height,18,19,26,math.floor(alpha*0.96),8)
+            ImGui.AddRectFilled(x,y+8,x+3,y+height-8,ar,ag,ab,alpha,1)
+            ImGui.AddText(x+14,y+9,"MeloCatScr",ar,ag,ab,alpha)
+            for i,line in ipairs(lines) do ImGui.AddText(x+14,y+15+i*16,line,230,230,230,alpha) end
+            local remain=math.max(0,(q.ends-now)/(q.ends-q.start))
+            ImGui.AddRectFilled(x+14,y+height-7,x+14+(width-28)*remain,y+height-5,ar,ag,ab,alpha,1)
+            y=y+height+10
+        end
+    end
+    local id=EventMgr.RegisterHandler(eLuaEvent.ON_PRESENT,function()
+        local ok,err=pcall(draw)
+        if not ok and not failed then
+            failed=true
+            for _,q in ipairs(active) do originalToast(q.text) end
+            for _,q in ipairs(pending) do originalToast(q.text) end
+            active={}; pending={}
+            originalToast("Avisos laterais desativados nesta execucao: "..tostring(err))
+        end
+    end)
+    eventIds[#eventIds+1]=id
+    util.on_stop(function() pending={}; active={}; toast=originalToast; util.toast=originalToast end)
+
+end
+
+-- LANGUAGE SETTINGS BEGIN
+local function addLanguageSettings(misc)
+    local page=menu.list(misc,"Idioma",{},"Muda o idioma do script inteiro sem reiniciar. A escolha e salva automaticamente.")
+    misc.viewTabs[#misc.viewTabs+1]={name="Idioma",node=page}
+    local ref=create(page,"Idioma",eFeatureType.Combo,"Muda o idioma do script inteiro sem reiniciar. A escolha e salva automaticamente.",function(f)
+        local lang=f:GetListIndex()==1 and "en-US" or "pt-BR"
+        local saved=I18N.change(lang)
+        panel.filter=""; layoutRevision=layoutRevision+1
+        toast(saved and "Idioma alterado e salvo." or "Idioma aplicado. Nao foi possivel salvar a preferencia.")
+    end)
+    ref.feature:SetList({"Portugues (Brasil)","English (US)"}):SetListIndex(I18N.lang=="en-US" and 1 or 0)
+end
+-- LANGUAGE SETTINGS END
+
+local function addBranding(misc)
+    for _,ref in pairs(refs) do
+        if ref.path:match("/Credits/MeloCatScr/Tiktok$") or ref.path:match("/Credits/MeloCatScr/Twitter$") or ref.path:match("/Credits/MeloCatScr/Instagram$") or ref.path:match("/Credits/MeloCatScr/Youtube$") then
+            displayName(ref,ref.name.." [sem link]")
+        end
+    end
+    local page=menu.list(misc,"Logo",{},"MeloCatScr no topo da tela. Estes ajustes sao salvos automaticamente.")
+    misc.viewTabs[#misc.viewTabs+1]={name="Logo",node=page}
+    addPresentation(misc)
+    addAvailabilityReview(misc)
+    addLanguageSettings(misc)
+    local prefs={intro=true,loader=true,fixed=true,size=160}
+    local file=meloDataPath("MeloCatScrLogo.ini")
+    local readFile=meloReadPath("MeloCatScrLogo.ini")
+    if readFile and FileMgr.ReadFileContent and (not FileMgr.DoesFileExist or FileMgr.DoesFileExist(readFile)) then
+        local ok,text=pcall(FileMgr.ReadFileContent,readFile)
+        if ok and type(text)=="string" and #text<320 then
+            local intro,loader,fixed,size=text:match("^version=2\nintro=([01])\nloader=([01])\nfixed=([01])\nsize=(%d+)\n?$")
+            if not intro then
+                intro,fixed,size=text:match("^version=1\nintro=([01])\nfixed=([01])\nsize=(%d+)\n?$")
+                loader="1"
+            end
+            size=tonumber(size)
+            if intro and loader and fixed and size and size>=120 and size<=460 then prefs={intro=intro=="1",loader=loader=="1",fixed=fixed=="1",size=size} end
+        end
+    end
+    local function save()
+        if not file or not FileMgr.WriteFileContent then toast(I18N.text("Logo: gravacao de preferencias indisponivel.")); return end
+        local ok,result=pcall(FileMgr.WriteFileContent,file,string.format("version=2\nintro=%d\nloader=%d\nfixed=%d\nsize=%d\n",prefs.intro and 1 or 0,prefs.loader and 1 or 0,prefs.fixed and 1 or 0,prefs.size),false)
+        if ok and result==true then meloDropLegacy("MeloCatScrLogo.ini")
+        else toast(I18N.text("Nao foi possivel salvar as preferencias da logo.")) end
+    end
+    local textureId,requested,failed,start,preview=nil,false,false,nil,false
+    local deadline=0
+    local function loadTexture()
+        if requested or failed then return end
+        requested=true; deadline=now_ms()+10000
+        if not Texture or not Texture.LoadTextureAsync or not Texture.IsTextureValid or not Texture.GetTexture
+            or not ImGui.AddImage or not ImGui.GetDisplaySize or not FileMgr or not FileMgr.GetMenuRootPath then
+            failed=true; toast(I18N.text("Logo: esta API nao expoe Texture/ImGui.AddImage.")); return
+        end
+        local ok,id=pcall(Texture.LoadTextureAsync,FileMgr.GetMenuRootPath().."\\Lua\\MeloCatScr\\logo.png")
+        if ok and type(id)=="number" then textureId=id else failed=true; toast(I18N.text("Nao foi possivel carregar MeloCatScr/logo.png.")) end
+    end
+    -- Animated frame-sequence loader (frames 015..050) ------------------------
+    local LOADER_FPS=12 -- velocidade da animacao dos frames; teste 8, 10, 12, 24, 30, 60
+    local LOADER_TAIL=10 -- ultimos frames da sequencia rodam mais devagar (aterrissagem suave)
+    local LOADER_TAIL_DIV=2 -- divide o fps nesses frames (2 = metade da velocidade)
+    local FRAME_FIRST,FRAME_LAST=15,50
+    local FRAME_TOTAL=FRAME_LAST-FRAME_FIRST+1
+    local LOADER_FRAMES_DIR="" -- vazio = deteccao automatica junto do script; ou caminho da pasta dos frames (ou da pasta pai)
+    local frames,frameAspect={},nil
+    local framesState="idle" -- idle|loading|ready|failed
+    local framesMissing,framesDeadline=0,0
+    local frameIndex,frameAccum,frameTick=1,0,nil
+    -- Area de conteudo visivel: uniao das bounding boxes dos 36 frames (medida) + folga de 6px.
+    -- Recorta as margens transparentes para a logo ocupar o quadro como a logo estatica.
+    local FRAME_UV={0.2828,0.0139,0.7203,0.875}
+    local PROBE_CHECKS={
+        {"\\PHOTS\\ezgif-frame-%03d.png","\\PHOTS","ezgif-frame-%03d.png"},
+        {"\\PHOTS\\ezgif-frame-%03d.jpg","\\PHOTS","ezgif-frame-%03d.jpg"},
+        {"\\ezgif-frame-%03d.png","","ezgif-frame-%03d.png"},
+        {"\\frames\\ezgif-frame-%03d.png","\\frames","ezgif-frame-%03d.png"},
+        {"\\frames_sem_fundo\\ezgif-frame-%03d.png","\\frames_sem_fundo","ezgif-frame-%03d.png"},
+        {"\\ezgif-frame-%03d.jpg","","ezgif-frame-%03d.jpg"},
+        {"\\frames\\ezgif-frame-%03d.jpg","\\frames","ezgif-frame-%03d.jpg"},
+        {"\\%03d.png","","%03d.png"},
+        {"\\frames\\%03d.png","\\frames","%03d.png"},
+        {"\\%03d.jpg","","%03d.jpg"},
+    }
+    local function logLoader(msg)
+        if Logger and Logger.LogInfo then pcall(Logger.LogInfo,"[Loader] "..msg) end
+    end
+    local function resetFrameClock()
+        frameIndex=1; frameAccum=0; frameTick=nil
+    end
+    local function scriptDir()
+        if not (debug and debug.getinfo) then return nil end
+        local ok,src=pcall(function() return debug.getinfo(1,"S").source end)
+        if not ok or type(src)~="string" or src:sub(1,1)~="@" then return nil end
+        local dir=src:match("^@(.*)[/\\][^/\\]+$")
+        if dir and dir~="" then return dir end
+        return nil
+    end
+    local function discoveryRoots()
+        local roots={}
+        local function add(p)
+            if type(p)=="string" and p~="" then
+                p=p:gsub("[\\/]+$","")
+                if p~="" then
+                    local lp=p:lower()
+                    for _,e in ipairs(roots) do
+                        if e:lower()==lp then return end
+                    end
+                    roots[#roots+1]=p
+                end
+            end
+        end
+        add(LOADER_FRAMES_DIR)
+        add(scriptDir())
+        if FileMgr and FileMgr.GetMenuRootPath then
+            local ok,root=pcall(FileMgr.GetMenuRootPath)
+            if ok and type(root)=="string" then
+                add(root); add(root.."\\Lua")
+                local parent=root:match("^(.*)[/\\][^/\\]+$")
+                if parent then add(parent) end
+            end
+        end
+        if type(os)=="table" and os.getenv then
+            local okApp,app=pcall(os.getenv,"APPDATA")
+            if okApp and type(app)=="string" then add(app.."\\Cherax"); add(app.."\\Cherax\\Lua") end
+            local okProf,prof=pcall(os.getenv,"USERPROFILE")
+            if okProf and type(prof)=="string" then add(prof.."\\Documents") end
+        end
+        return roots
+    end
+    local function probeBase(base)
+        if not base or base=="" or not (FileMgr and FileMgr.DoesFileExist) then return nil end
+        for _,chk in ipairs(PROBE_CHECKS) do
+            local first=base..string.format(chk[1],FRAME_FIRST)
+            local last=base..string.format(chk[1],FRAME_LAST)
+            if FileMgr.DoesFileExist(first) and FileMgr.DoesFileExist(last) then
+                return base..chk[2],chk[3]
+            end
+        end
+        return nil
+    end
+    local function listFiles(dir,ext)
+        if not dir or dir=="" or not (FileMgr and FileMgr.FindFiles) then return nil end
+        local ok,res=pcall(FileMgr.FindFiles,dir,ext,true)
+        if ok and type(res)=="table" and #res>0 then return res end
+        ok,res=pcall(FileMgr.FindFiles,dir,"."..ext,true)
+        if ok and type(res)=="table" and #res>0 then return res end
+        ok,res=pcall(FileMgr.FindFiles,dir,"*."..ext,true)
+        if ok and type(res)=="table" and #res>0 then return res end
+        return nil
+    end
+    local function scanFor(marker,ext,fnamePattern)
+        for _,root in ipairs(discoveryRoots()) do
+            local files=listFiles(root,ext)
+            if files then
+                for _,f in ipairs(files) do
+                    if type(f)=="string" and f:lower():match(marker) then
+                        local dir=f:match("^(.*)[/\\][^/\\]+$")
+                        if not dir and not f:find("[/\\]",1,true) then dir=root end
+                        if dir and dir~="" then return dir,fnamePattern end
+                    end
+                end
+            end
+        end
+        return nil
+    end
+    local function findFrames()
+        for _,root in ipairs(discoveryRoots()) do
+            local dir,pattern=probeBase(root)
+            if dir then return dir,pattern end
+        end
+        local dir,pattern=scanFor("ezgif%-frame%-015%.png$","png","ezgif-frame-%03d.png")
+        if dir then return dir,pattern end
+        dir,pattern=scanFor("ezgif%-frame%-015%.jpg$","jpg","ezgif-frame-%03d.jpg")
+        if dir then return dir,pattern end
+        dir,pattern=scanFor("[/\\]015%.png$","png","%03d.png")
+        if dir then return dir,pattern end
+        return scanFor("[/\\]015%.jpg$","jpg","%03d.jpg")
+    end
+    local function startFrames()
+        if framesState~="idle" then return end
+        framesState="loading"
+        if not (Texture and Texture.LoadTextureAsync and Texture.IsTextureValid and Texture.GetTexture) then
+            framesState="failed"
+            logLoader("Texture API unavailable; using logo fallback.")
+            return
+        end
+        local ok,dir,pattern=pcall(findFrames)
+        if not ok or not dir or not pattern then
+            framesState="failed"
+            logLoader("Frames "..FRAME_FIRST.."-"..FRAME_LAST.." not found; using logo fallback.")
+            return
+        end
+        logLoader("Frames directory: "..dir)
+        for i=FRAME_FIRST,FRAME_LAST do
+            local path=dir.."\\"..string.format(pattern,i)
+            local exists=FileMgr and FileMgr.DoesFileExist and FileMgr.DoesFileExist(path)
+            if exists then
+                local okId,id=pcall(Texture.LoadTextureAsync,path)
+                if okId and type(id)=="number" then
+                    frames[#frames+1]={id=id}
+                else
+                    framesMissing=framesMissing+1
+                    logLoader(string.format("Failed to queue frame %03d.",i))
+                end
+            else
+                framesMissing=framesMissing+1
+                logLoader("Missing frame: "..string.format(pattern,i))
+            end
+        end
+        if #frames==0 then
+            framesState="failed"
+            logLoader("No frames could be loaded; using logo fallback.")
+            return
+        end
+        framesDeadline=now_ms()+10000
+    end
+    local function pruneFrames()
+        local kept,keptN={},0
+        for _,f in ipairs(frames) do
+            if Texture.IsTextureValid(f.id) then keptN=keptN+1; kept[keptN]=f end
+        end
+        frames=kept
+        return keptN
+    end
+    local function pollFrames()
+        if framesState~="loading" then return end
+        local valid,total=0,#frames
+        for _,f in ipairs(frames) do
+            if Texture.IsTextureValid(f.id) then valid=valid+1 end
+        end
+        if valid>=total then
+            local keptN=pruneFrames()
+            if keptN==0 then
+                framesState="failed"
+                logLoader("Frame textures invalid; using logo fallback.")
+            else
+                framesState="ready"
+                resetFrameClock()
+                if framesMissing==0 and keptN==FRAME_TOTAL then
+                    logLoader(string.format("Loaded %d/%d frames successfully.",keptN,FRAME_TOTAL))
+                else
+                    logLoader(string.format("Loaded %d/%d frames (%d missing).",keptN,FRAME_TOTAL,FRAME_TOTAL-keptN))
+                end
+            end
+        elseif now_ms()>framesDeadline then
+            local keptN=pruneFrames()
+            if keptN==0 then
+                framesState="failed"
+                logLoader("Frame load timeout (0 ready); using logo fallback.")
+            else
+                framesState="ready"
+                resetFrameClock()
+                logLoader(string.format("Loaded %d/%d frames (timeout).",keptN,FRAME_TOTAL))
+            end
+        end
+    end
+    local function advanceFrame(now)
+        if not frameTick then frameTick=now return end
+        local dt=now-frameTick
+        frameTick=now
+        if dt<=0 then return end
+        if dt>500 then dt=500 end -- picos de tempo nao acumulam atraso de animacao
+        frameAccum=frameAccum+dt
+        local fps=type(LOADER_FPS)=="number" and LOADER_FPS>0 and LOADER_FPS or 24
+        local guard=0
+        while guard<60 do
+            guard=guard+1
+            local stepFps=fps
+            if #frames>0 and frameIndex>#frames-LOADER_TAIL then stepFps=fps/LOADER_TAIL_DIV end
+            local step=1000/math.max(1,stepFps)
+            if frameAccum<step then break end
+            frameAccum=frameAccum-step
+            frameIndex=(frameIndex%#frames)+1
+        end
+    end
+    -- advance=true anima (loop 015..050); advance=falso congela no ultimo frame.
+    local function currentFrameSrv(now,advance)
+        if framesState=="failed" or #frames==0 then return nil end
+        if framesState=="loading" then pollFrames() end
+        if framesState~="ready" then return nil end
+        if advance then
+            advanceFrame(now)
+        else
+            frameIndex=#frames
+        end
+        local f=frames[frameIndex] or frames[1]
+        local tex=Texture.GetTexture(f.id)
+        if not tex then return nil end
+        local srv=tex:GetCurrent()
+        if not srv then return nil end
+        if not frameAspect then
+            local okW,w=pcall(function() return tex:GetWidth() end)
+            local okH,h=pcall(function() return tex:GetHeight() end)
+            if okW and okH and type(w)=="number" and type(h)=="number" and w>0 and h>0 then
+                frameAspect=w/h
+            end
+        end
+        return srv
+    end
+    -- Encaixa a area de conteudo (FRAME_UV) dentro de um quadrado side x side, sem esticar.
+    local function drawFrameContain(srv,x,y,side,alpha)
+        local texAspect=(type(frameAspect)=="number" and frameAspect>0) and frameAspect or (16/9)
+        local aspect=((FRAME_UV[3]-FRAME_UV[1])/(FRAME_UV[4]-FRAME_UV[2]))*texAspect
+        local w,h=side,side/aspect
+        if h>side then h=side; w=side*aspect end
+        local fx,fy=x+(side-w)/2,y+(side-h)/2
+        local color=(math.floor(math.max(0,math.min(1,alpha))*255)<<24)|0x00FFFFFF
+        ImGui.AddImage(srv,fx,fy,fx+w,fy+h,FRAME_UV[1],FRAME_UV[2],FRAME_UV[3],FRAME_UV[4],color)
+    end
+    -- Frame-sequence loader END -------------------------------------------------
+    -- GitHub asset auto-install (logo + PHOTS frames) -------------------------
+    -- Quando logo.png ou os frames PHOTS faltam no disco, baixa do repositorio,
+    -- cria as pastas Lua\MeloCatScr e Lua\PHOTS e grava os arquivos.
+    local ASSETS_REPO="https://raw.githubusercontent.com/melinskyRf/MeloMMrepo/main"
+    local ASSETS_UA="MeloCatScr/1.0 (Cherax Lua)"
+    local ASSETS_TIMEOUT=45000
+    local PNG_MAGIC="\137PNG\r\n\26\n"
+    local assetsState="idle" -- idle|busy|done|failed
+    local assetsQueue,assetsRetry={},{}
+    local assetsIdx,assetsCur,assetsCurAt=1,nil,0
+    local assetsNeed,assetsFail,assetsPass=0,0,1
+    local function assetsRoot()
+        if not (FileMgr and FileMgr.GetMenuRootPath) then return nil end
+        local ok,r=pcall(FileMgr.GetMenuRootPath)
+        if ok and type(r)=="string" and r~="" then return r end
+        return nil
+    end
+    local function assetsLogoPath()
+        local root=assetsRoot()
+        return root and (root.."\\Lua\\MeloCatScr\\logo.png") or nil
+    end
+    local function assetsPhotsDir()
+        local root=assetsRoot()
+        return root and (root.."\\Lua\\PHOTS") or nil
+    end
+    local function assetsExists(path)
+        if not path or not (FileMgr and FileMgr.DoesFileExist) then return false end
+        local ok,e=pcall(FileMgr.DoesFileExist,path)
+        if not ok then return false end
+        return not not e
+    end
+    local function assetsBuildQueue()
+        local q={}
+        local lp=assetsLogoPath()
+        if lp and not assetsExists(lp) then q[#q+1]={url=ASSETS_REPO.."/logo.png",path=lp,name="logo.png"} end
+        local pd=assetsPhotsDir()
+        if pd then
+            for i=FRAME_FIRST,FRAME_LAST do
+                local fname=string.format("ezgif-frame-%03d.png",i)
+                local p=pd.."\\"..fname
+                if not assetsExists(p) then q[#q+1]={url=ASSETS_REPO.."/PHOTS/"..fname,path=p,name=fname} end
+            end
+        end
+        return q
+    end
+    local function assetsStart()
+        if assetsState=="busy" then return end
+        if not (Curl and Curl.Easy and FileMgr and FileMgr.WriteFileContent and FileMgr.DoesFileExist) then
+            assetsState="failed"
+            logLoader("Asset install unavailable (Curl/FileMgr API missing).")
+            return
+        end
+        assetsQueue=assetsBuildQueue()
+        assetsRetry={}; assetsIdx=1; assetsCur=nil
+        assetsFail=0; assetsPass=1; assetsNeed=#assetsQueue
+        if assetsNeed==0 then assetsState="done"; return end
+        if FileMgr.CreateDir then
+            local root=assetsRoot()
+            if root then
+                pcall(FileMgr.CreateDir,root.."\\Lua\\MeloCatScr")
+                pcall(FileMgr.CreateDir,root.."\\Lua\\PHOTS")
+            end
+        end
+        assetsState="busy"
+        logLoader(string.format("Missing %d asset(s); downloading from GitHub.",assetsNeed))
+    end
+    local function assetsFailItem(item,why)
+        assetsFail=assetsFail+1
+        assetsRetry[#assetsRetry+1]=item
+        logLoader(string.format("Download failed: %s (%s).",item.name,why))
+    end
+    local assetsVerifyNote=false
+    local function assetsSave(path,body)
+        if io and io.open then
+            local okf,f=pcall(io.open,path,"wb")
+            if okf and f then
+                local okw,w=pcall(function() return f:write(body) end)
+                pcall(function() f:close() end)
+                local written=okw and w~=nil
+                local okr,g=pcall(io.open,path,"rb")
+                if written and okr and g then
+                    local okb,back=pcall(function() return g:read("*a") end)
+                    pcall(function() g:close() end)
+                    if okb and type(back)=="string" and #back==#body then return true end
+                end
+                if FileMgr and FileMgr.DeleteFile and assetsExists(path) then pcall(FileMgr.DeleteFile,path) end
+            end
+        end
+        if not (FileMgr and FileMgr.WriteFileContent) then return false,"no writer" end
+        local okw,rc=pcall(FileMgr.WriteFileContent,path,body,false)
+        if not okw or rc~=true then return false,"write" end
+        if FileMgr.DoesFileExist and not assetsExists(path) then return false,"missing" end
+        if FileMgr.ReadFileContent then
+            local okv,back=pcall(FileMgr.ReadFileContent,path)
+            if okv and type(back)=="string" and #back==#body then return true end
+            if not assetsVerifyNote then
+                assetsVerifyNote=true
+                local rb="error"
+                if okv and type(back)=="string" then rb=tostring(#back) elseif okv then rb=tostring(back) end
+                logLoader(string.format("Verify note: FileMgr read back %s of %d bytes; trusting WriteFileContent.",rb,#body))
+            end
+        end
+        return true
+    end
+    local function assetsConsume()
+        local item=assetsQueue[assetsIdx]
+        local ok,finished=pcall(function() return assetsCur:GetFinished() end)
+        if not ok then
+            assetsFailItem(item,"curl state error")
+        elseif not finished then
+            assetsFailItem(item,"timeout")
+        else
+            local okr,code,body=pcall(function() return assetsCur:GetResponse() end)
+            local curleOK=(eCurlCode and eCurlCode.CURLE_OK) or 6
+            if not okr then
+                assetsFailItem(item,"response error")
+            elseif code~=curleOK then
+                assetsFailItem(item,"code "..tostring(code))
+            elseif type(body)~="string" or #body<128 or body:sub(1,8)~=PNG_MAGIC then
+                assetsFailItem(item,"bad response")
+            else
+                local oksv,why=assetsSave(item.path,body)
+                if not oksv then assetsFailItem(item,why or "save error") end
+            end
+        end
+        assetsCur=nil
+        assetsIdx=assetsIdx+1
+    end
+    local function assetsFinish()
+        if assetsPass<2 and #assetsRetry>0 then
+            assetsQueue=assetsRetry; assetsRetry={}; assetsIdx=1; assetsFail=0; assetsPass=2
+            logLoader(string.format("Retrying %d failed download(s).",#assetsQueue))
+            return
+        end
+        local haveLogo=assetsExists(assetsLogoPath())
+        assetsState=haveLogo and "done" or "failed"
+        logLoader(string.format("Assets ready: %d/%d (attempt %d).",assetsNeed-assetsFail,assetsNeed,assetsPass))
+        if not haveLogo then logLoader("Logo unavailable; check the network and reload the script.") end
+    end
+    local function assetsPump()
+        if assetsState~="busy" then return end
+        if assetsCur then
+            local item=assetsQueue[assetsIdx]
+            local ok,finished=pcall(function() return assetsCur:GetFinished() end)
+            local timedOut=(now_ms()-assetsCurAt)>ASSETS_TIMEOUT
+            if ok and not finished and not timedOut then return end
+            if ok and not finished then
+                assetsFailItem(item,"timeout")
+                assetsCur=nil
+                assetsIdx=assetsIdx+1
+            else
+                assetsConsume()
+            end
+        end
+        while assetsState=="busy" and assetsIdx<=#assetsQueue do
+            local item=assetsQueue[assetsIdx]
+            local launched=false
+            local okc,c=pcall(Curl.Easy)
+            if okc and c then
+                local ok2=pcall(function()
+                    if c.DisableErrorLog then c:DisableErrorLog() end
+                    c:Setopt((eCurlOption and eCurlOption.CURLOPT_URL) or 4,item.url)
+                    c:Setopt((eCurlOption and eCurlOption.CURLOPT_USERAGENT) or 5,ASSETS_UA)
+                    c:Perform()
+                end)
+                if ok2 then
+                    assetsCur=c; assetsCurAt=now_ms(); launched=true
+                end
+            end
+            if launched then return end
+            assetsFailItem(item,"setup error")
+            assetsIdx=assetsIdx+1
+        end
+        if assetsState=="busy" and assetsIdx>#assetsQueue then assetsFinish() end
+    end
+    -- GitHub asset auto-install END ---------------------------------------------
+    local intro=menu.toggle(page,"Animacao inicial",{},"Entrada suave no topo. Com Logo fixa desligada, desaparece apos cinco segundos. Salvo automaticamente.",function(on)
+        prefs.intro=on; if not on then start=nil; preview=false end; save()
+    end)
+    intro.value=prefs.intro; intro.feature:SetBoolValue(prefs.intro)
+    local loader=menu.toggle(page,"Tela de loader",{},"Mostra a logo grande no centro com carregamento colorido antes de ir para o topo.",function(on) prefs.loader=on; save() end)
+    loader.value=prefs.loader; loader.feature:SetBoolValue(prefs.loader)
+    local fixed=menu.toggle(page,"Logo fixa",{},"Mantem a logo no topo depois da animacao. Ligado por padrao.",function(on) prefs.fixed=on; save() end)
+    fixed.value=prefs.fixed; fixed.feature:SetBoolValue(prefs.fixed)
+    local size=create(page,"Tamanho px",eFeatureType.SliderInt,"Largura em pixels; limitada automaticamente para caber na tela.",function(f)
+        prefs.size=math.max(120,math.min(460,f:GetIntValue())); save()
+    end)
+    size.feature:SetLimitValues(120,460):SetStepSize(10):SetIntValue(prefs.size)
+    menu.action(page,"Testar animacao",{},"Mostra a animacao uma vez, mesmo com a entrada automatica desligada.",function()
+        preview=true; start=nil; assetsStart()
+        if assetsState~="busy" then loadTexture() end
+    end)
+    menu.action(page,"Ocultar agora",{},"Desativa a entrada e a logo fixa, interrompe a animacao e salva.",function()
+        prefs.intro=false; prefs.fixed=false; intro.value=false; fixed.value=false
+        intro.feature:SetBoolValue(false); fixed.feature:SetBoolValue(false); start=nil; preview=false; save()
+    end)
+    local played=false
+    -- Porta da interface: o menu do ClickGUI so aparece quando a entrada terminar.
+    uiGateOpen=not prefs.intro
+    if prefs.intro or prefs.fixed then
+        assetsStart()
+        if assetsState~="busy" then loadTexture() end
+    end
+    local function present()
+        if gunsmithScreenActive then return end
+        if stopped then return end
+        uiGateOpen=failed or not (preview or (prefs.intro and not played))
+        if assetsState=="busy" then
+            assetsPump()
+            if assetsState=="busy" then return end
+        end
+        if failed or (not prefs.fixed and not preview and (not prefs.intro or played)) then return end
+        if not requested then loadTexture() end
+        if framesState=="idle" then startFrames() elseif framesState=="loading" then pollFrames() end
+        if failed or not textureId then return end
+        if not Texture.IsTextureValid(textureId) then
+            if now_ms()>deadline then failed=true; toast(I18N.text("Logo nao carregou. Confira Lua/MeloCatScr/logo.png.")) end
+            return
+        end
+        local texture=Texture.GetTexture(textureId)
+        if not texture then return end
+        local current=texture:GetCurrent(); if not current then return end
+        local width,height=ImGui.GetDisplaySize()
+        if not width or not height or width<64 or height<64 then return end
+        local now=now_ms()
+        -- Espera os frames ficarem prontos (ou falharem) para mostrar animacao e barra juntas.
+        if not start and (preview or prefs.intro and not played) and (framesState=="ready" or framesState=="failed") then start=now; resetFrameClock() end
+        local finalSide=math.min(prefs.size,width-32,height*0.45)
+        local finalX,finalY=(width-finalSide)/2,math.max(8,height*0.012)
+        local function image(x,y,side,alpha)
+            local color=(math.floor(math.max(0,math.min(1,alpha))*255)<<24)|0x00FFFFFF
+            ImGui.AddImage(current,x,y,x+side,y+side,0,0,1,1,color)
+        end
+        local function bar(bx,alpha,progress)
+            if not (ImGui.AddRectFilled and ImGui.AddText) then return end
+            local acc=uiAccent()
+            local c={math.floor(acc[1]*255+0.5),math.floor(acc[2]*255+0.5),math.floor(acc[3]*255+0.5)}
+            local trackC={math.floor(c[1]*0.20+0.5),math.floor(c[2]*0.42+0.5),math.floor(c[3]*0.38+0.5)}
+            local bw=math.min(430,width*0.5)
+            local barX=(width-bw)/2
+            ImGui.AddText(barX+8,bx-29,"Version 1.1.0",c[1],c[2],c[3],math.floor(alpha*255))
+            ImGui.AddText(barX+bw-118,bx-29,string.format("%03d%%",math.floor(progress*100)),184,184,184,math.floor(alpha*255))
+            ImGui.AddRectFilled(barX,bx,barX+bw,bx+9,trackC[1],trackC[2],trackC[3],math.floor(alpha*150),5)
+            ImGui.AddRectFilled(barX,bx,barX+bw*progress,bx+9,c[1],c[2],c[3],math.floor(alpha*235),5)
+            ImGui.AddText(barX+8,bx+18,"LOADING MELOCATSCR",230,230,230,math.floor(alpha*210))
+        end
+        if start then
+            local elapsed=math.max(0,now-start)
+            local loaderTime,moveTime=3900,1150 -- 3900 = um ciclo completo com a cauda lenta
+            if prefs.loader then
+                local centerSide=math.min(math.max(finalSide*1.75,260),width*0.34,height*0.42)
+                local centerX=(width-centerSide)/2
+                local centerY=(height-centerSide)/2-36
+                if elapsed<loaderTime then
+                    local progress=math.max(0,math.min(1,elapsed/loaderTime))
+                    local alpha=math.min(1,elapsed/450)
+                    local srv=currentFrameSrv(now,true)
+                    if srv then drawFrameContain(srv,centerX,centerY,centerSide,alpha) else image(centerX,centerY,centerSide,alpha) end
+                    bar(centerY+centerSide+30,alpha,progress)
+                    return
+                elseif elapsed<loaderTime+moveTime then
+                    local t=(elapsed-loaderTime)/moveTime; local ease=1-(1-t)^3
+                    local side=centerSide+(finalSide-centerSide)*ease
+                    local x=centerX+(finalX-centerX)*ease
+                    local y=centerY+(finalY-centerY)*ease
+                    image(x,y,side,1.0)
+                    return
+                else
+                    played=true; preview=false; start=nil
+                    if not prefs.fixed then return end
+                end
+            else
+                local t=math.min(1,elapsed/650); local alpha=1-(1-t)^3
+                if elapsed>4200 and not prefs.fixed then alpha=math.max(0,1-(elapsed-4200)/800) end
+                if elapsed>=5000 then played=true; preview=false; start=nil; if not prefs.fixed then return end; alpha=1.0 end
+                if elapsed<loaderTime then
+                    local srv=currentFrameSrv(now,true)
+                    if srv then drawFrameContain(srv,finalX,finalY,finalSide,alpha) else image(finalX,finalY,finalSide,alpha) end
+                    bar(finalY+finalSide+30,alpha,math.max(0,math.min(1,elapsed/loaderTime)))
+                else
+                    image(finalX,finalY,finalSide,alpha)
+                end
+                return
+            end
+        end
+        if prefs.fixed then image(finalX,finalY,finalSide,1.0) end
+    end
+    local id=EventMgr.RegisterHandler(eLuaEvent.ON_PRESENT,function()
+        local ok,err=pcall(present)
+        if not ok then failed=true; toast("Logo desativada nesta execucao: "..tostring(err)) end
+    end)
+    eventIds[#eventIds+1]=id
+    -- The published Texture API has no unload method. Keep one managed texture per script,
+    -- stop rendering on unload and let Cherax own GPU lifetime; never reload it every frame.
+    util.on_stop(function() start=nil; preview=false; textureId=nil; frames={}; frameAspect=nil; frameIndex=1; frameAccum=0; frameTick=nil end)
+    layoutRevision=layoutRevision+1
+end
+-- BRAND LOGO END
+
+    -- Public bindings -------------------------------------------------------
+    return {
+        addBranding = { get = function() return addBranding end, set = function(value) addBranding = value end },
+        uiGateOpen = { get = function() return uiGateOpen end, set = function(value) uiGateOpen = value end }
+    }
+end
+
+end)()
+-- [/MC:presentation/identity]
+
+
+-- ----------------------------------------------------------------------------

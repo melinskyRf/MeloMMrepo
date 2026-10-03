@@ -1,0 +1,2555 @@
+-- ============================================================================
+-- MELOCAT-PART rev=4 file=part03_natives_hud.txt
+-- MeloCatScr 1.1.0 part 3 of 4. Header rev must match PARTS_REV.
+-- ============================================================================
+-- [MC:natives/hud] HUD and map markers
+-- Owner: presentation/navigation; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.HUD=function(native,bind)
+    native.HUD = {}
+    native.HUD.GET_BLIP_COORDS = bind(0x586AFE3FF72D996E, "InvokeV3", "i")
+    native.HUD.GET_FIRST_BLIP_INFO_ID = bind(0x1BEDE233E6CD2A1F, "InvokeInt", "i")
+    native.HUD.IS_WAYPOINT_ACTIVE = bind(0x1DD1F58F493F1DA5, "InvokeBool", "")
+    native.HUD.SET_MOUSE_CURSOR_THIS_FRAME = bind(0xAAE7CE1D63167423, "InvokeVoid", "")
+    native.HUD.HIDE_HUD_AND_RADAR_THIS_FRAME = bind(0x719FF505F097FD20, "InvokeVoid", "")
+    native.HUD.SET_TEXT_SCALE = bind(0x07C837F9A01C34C9, "InvokeVoid", "ff")
+    native.HUD.SET_TEXT_COLOUR = bind(0xBE6B23FFA53FB442, "InvokeVoid", "iiii")
+    native.HUD.SET_TEXT_CENTRE = bind(0xC02F4DBFB51D988B, "InvokeVoid", "b")
+    native.HUD.SET_TEXT_OUTLINE = bind(0x2513DFB0FB8400FE, "InvokeVoid", "")
+    native.HUD.BEGIN_TEXT_COMMAND_DISPLAY_TEXT = bind(0x25FBB336DF1804CB, "InvokeVoid", "s")
+    native.HUD.ADD_TEXT_COMPONENT_SUBSTRING_PLAYER_NAME = bind(0x6C188BE134E074AA, "InvokeVoid", "s")
+    native.HUD.END_TEXT_COMMAND_DISPLAY_TEXT = bind(0xCD015E5BB0D96A57, "InvokeVoid", "ffi")
+    native.HUD.BEGIN_TEXT_COMMAND_THEFEED_POST = bind(0x202709F4C58A0424, "InvokeVoid", "s")
+    native.HUD.END_TEXT_COMMAND_THEFEED_POST_MESSAGETEXT = bind(0x1CCD9A37359072CF, "InvokeInt", "ssbiss")
+    native.HUD.END_TEXT_COMMAND_THEFEED_POST_TICKER = bind(0x2ED7843F8F801023, "InvokeInt", "bb")
+    native.HUD.SET_NEW_WAYPOINT = bind(0xFE43368D2AA4F2FC, "InvokeVoid", "ff")
+    native.HUD.SET_BLIP_ROUTE = bind(0x4F7D8A9BFB0B43E9, "InvokeVoid", "ib")
+    native.HUD.ADD_BLIP_FOR_ENTITY = bind(0x5CDE92C702A8FCE7, "InvokeInt", "i")
+    native.HUD.SET_BLIP_COLOUR = bind(0x03D7FB09E75D6B7E, "InvokeVoid", "ii")
+    native.HUD.REMOVE_BLIP = bind(0x86A652570E5F25DD, "InvokeVoid", "i")
+    native.HUD.DOES_BLIP_EXIST = bind(0xA6DB27D19ECBB7DA, "InvokeBool", "i")
+    native.HUD.GET_NEXT_BLIP_INFO_ID = bind(0x14F96AA50D6FBEA7, "InvokeInt", "i")
+    native.HUD.SET_PAUSE_MENU_ACTIVE = bind(0xDF47FC56C71569CF, "InvokeVoid", "b")
+    native.HUD.SET_WAYPOINT_OFF = bind(0xA7E4E2D361C2627F, "InvokeVoid", "")
+    native.HUD.SET_TEXT_FONT = bind(0x66E0276CC5F6B9DA, "InvokeVoid", "i")
+    native.HUD.IS_PAUSE_MENU_ACTIVE = bind(0xB0034A223497FFCB, "InvokeBool", "")
+    native.HUD.GET_FILENAME_FOR_AUDIO_CONVERSATION = bind(0x7B5280EBA9840C72, "InvokeString", "s")
+    native.HUD.GET_BLIP_COLOUR = bind(0xDF729E8D20CF7327, "InvokeInt", "i")
+    native.HUD.GET_BLIP_INFO_ID_TYPE = bind(0xBE9B0959FFD0779B, "InvokeInt", "i")
+end
+-- [/MC:natives/hud]
+
+-- ----------------------------------------------------------------------------
+-- [MC:presentation/navigation] 02.05 / NAVIGATION
+-- Assemble navigation routes from registered feature sources.
+-- ----------------------------------------------------------------------------
+factories["presentation/navigation"]=(function()
+-- Workspace assembly uses a route schema and immutable views of registered controls.
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV=context:scope("presentation/navigation", {
+        ["composeRoutes"]="presentation/view_composer",
+        ["composeContacts"]="presentation/view_composer",
+        ["routeSchema"]="presentation/route_schema",
+        ["layoutRevision"]="presentation/workspace_state",
+        ["menu"]="presentation/workspace_state",
+        ["panel"]="presentation/workspace_state",
+        ["playerRoots"]="presentation/workspace_state",
+        ["root"]="presentation/workspace_state",
+    })
+
+    -- Implementation --------------------------------------------------------
+    local function assembleWorkspace(parts)
+        local index={}
+        local function visit(node)
+            index[node.path]=node
+            for _,ref in ipairs(node.items) do if ref.child then visit(ref.child) end end
+        end
+        visit(root)
+        local function source(path) return assert(index["MeloCatScr/"..path],"Missing registered section: "..path) end
+        local home=menu.list(root,"Central",{},"Quick access to your workspace.")
+        local function open(routeId)
+            for i,ref in ipairs(root.navigation or {}) do
+                if ref.child.routeId==routeId then panel.category=i-1; panel.filter=""; return end
+            end
+        end
+        local function shortcut(key,label,description,routeId)
+            local ref=menu.action(home,key,{},description,function() open(routeId) end)
+            ref.name=label; ref.feature:SetName(label)
+        end
+    shortcut("Abrir bancada","Open Weapon Center","Arsenal, aiming, loadouts and ammunition.","weapons")
+    shortcut("Explorar experiencias","Explore Fun Modes","Watch Dogs, Hitman and scene tools.","fun")
+    shortcut("Personalizar visual","Personalize Interface","Colors, layout and workspace preferences.","settings")
+        local sources={home=home,agent=parts.self,vehicle=parts.car,world=parts.world,powers=parts.hero,
+            movement=source("Self/Movement"),travel=source("Self/Deslocamento"),gunsmith=source("Weapon Options/Gunsmith Loadouts"),
+            combat=parts.combat,ammunition=parts.ammo,effects=parts.effects,weapons=parts.weapons,
+            activities=parts.fun,watchDogs=source("Watch Dogs"),hitman=source("Fun Features/Hitman"),
+            online=source("Online"),session=parts.lobby,defense=source("Protections"),settings=parts.settings}
+        root.navigation=composeRoutes(routeSchema,sources)
+        menu.redesignPlayer=composeContacts
+        for _,node in pairs(playerRoots) do composeContacts(node) end
+        panel.category=0; layoutRevision=layoutRevision+1
+    end
+    -- Public bindings -------------------------------------------------------
+    return {assembleWorkspace={get=function() return assembleWorkspace end}}
+end
+
+end)()
+-- [/MC:presentation/navigation]
+
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/pad] Input and controls
+-- Owner: presentation/preferences; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.PAD=function(native,bind)
+    native.PAD = {}
+    native.PAD.IS_CONTROL_JUST_RELEASED = bind(0x50F940259D3841E6, "InvokeBool", "ii")
+    native.PAD.IS_CONTROL_PRESSED = bind(0xF3A21BCD95725A4A, "InvokeBool", "ii")
+    native.PAD.GET_CONTROL_NORMAL = bind(0xEC3C9B8D5327B563, "InvokeFloat", "ii")
+    native.PAD.IS_DISABLED_CONTROL_JUST_PRESSED = bind(0x91AEF906BCA88877, "InvokeBool", "ii")
+    native.PAD.DISABLE_CONTROL_ACTION = bind(0xFE99B66D079CF6BC, "InvokeVoid", "iib")
+    native.PAD.GET_DISABLED_CONTROL_NORMAL = bind(0x11E65974A982637C, "InvokeFloat", "ii")
+    native.PAD.SET_CONTROL_VALUE_NEXT_FRAME = bind(0xE8A25867FBA3B05E, "InvokeBool", "iif")
+    native.PAD.IS_DISABLED_CONTROL_PRESSED = bind(0xE2587F8CBBD87B1D, "InvokeBool", "ii")
+end
+-- [/MC:natives/pad]
+
+-- ----------------------------------------------------------------------------
+-- [MC:presentation/preferences] 02.06 / PREFERENCES
+-- Read, validate and apply interface preferences.
+-- ----------------------------------------------------------------------------
+factories["presentation/preferences"]=(function()
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV = context:scope("presentation/preferences", {
+        ["I18N"] = "presentation/localization",
+        ["create"] = "presentation/control_registry",
+        ["layoutRevision"] = "presentation/workspace_state",
+        ["menu"] = "presentation/workspace_state",
+        ["panel"] = "presentation/workspace_state",
+        ["root"] = "presentation/workspace_state",
+        ["toast"] = "application/diagnostics",
+        ["uiDefaults"] = "presentation/workspace_state",
+        ["uiRanges"] = "presentation/workspace_state",
+        ["uiGroupRevision"] = "presentation/workspace_state",
+        ["uiPrefs"] = "presentation/workspace_state"
+    })
+
+
+    -- Implementation --------------------------------------------------------
+-- INTERFACE SETTINGS BEGIN
+local function addInterfaceSettings(misc,funfeatures)
+    -- Presentation moves keep original feature hashes, callbacks and Watch Dogs hotkeys.
+    misc.name="Configuracoes"
+    local links=menu.list(misc,"Links e creditos",{},"Links do MeloCatScr. Os botoes copiam os enderecos.")
+    local keep={}
+    for _,ref in ipairs(misc.items) do
+        if ref.child==links then keep[#keep+1]=ref
+        elseif ref.id then
+            ref.parent=links; links.items[#links.items+1]=ref
+            if ref.child then ref.child.parent=links; ref.child.name="Creditos" end
+        end
+    end
+    misc.items=keep
+    local visual=menu.list(misc,"Menu",{},"Visual e organizacao da interface MeloCatScr.")
+    local playersPage=menu.list(misc,"Jogadores",{},"Aparencia da lista e do cabecalho de jogadores.")
+    local preferences=menu.list(misc,"Preferencias",{},"Salva apenas ajustes visuais; nao salva ativacoes de gameplay.")
+    misc.viewTabs={{name="Menu",node=visual},{name="Jogadores",node=playersPage},{name="Preferencias",node=preferences},{name="Links e creditos",node=links}}
+    local wdRef
+    for i,ref in ipairs(root.items) do if ref.child and ref.child.name=="Watch Dogs" then wdRef=ref; table.remove(root.items,i); break end end
+    if wdRef then
+        wdRef.parent=funfeatures; wdRef.child.parent=funfeatures; wdRef.viewOnly=true
+        funfeatures.items[#funfeatures.items+1]=wdRef
+        funfeatures.viewTabs={{name="Geral",node=funfeatures},{name="Watch Dogs",node=wdRef.child}}
+    end
+    layoutRevision=layoutRevision+1
+    local controls={}
+    local keys={"color","hints","spacing","search","groups","swap","playerWidth","playerNames","playerIds",
+        "uiScale","sidebarW","iconSize","cardH","btnH","gapY","radius","borderS","glowS","shadowS",
+        "panelOpacity","panelContrast","hoverBoost","accentPower","animSpeed","scrollbarW"}
+    local function changed(key,value)
+        uiPrefs[key]=value
+        if key=="groups" then uiGroupRevision=uiGroupRevision+1 end
+        if key=="search" and value==0 then panel.filter="" end
+    end
+    local function toggle(group,key,name,description)
+        local r=menu.toggle(group,name,{},description,function(value) changed(key,value and 1 or 0) end)
+        r.value=uiPrefs[key]==1; r.feature:SetBoolValue(r.value); controls[key]=r
+    end
+    local function slider(group,key,name,description)
+        local range=uiRanges[key] or {0,100}
+        local r=create(group,name,eFeatureType.SliderInt,description,function(f)
+            changed(key,math.max(range[1],math.min(range[2],f:GetIntValue())))
+        end)
+        r.feature:SetLimitValues(range[1],range[2]):SetStepSize(range[2]-range[1]>40 and 5 or 1):SetIntValue(uiPrefs[key])
+        controls[key]=r
+        return r
+    end
+    local function applyValues(values)
+        for _,key in ipairs(keys) do
+            if values[key]~=nil then
+                changed(key,values[key]); local r=controls[key]
+                if r then
+                    r.generation=r.generation+1
+                    if r.kind==eFeatureType.Toggle then r.value=values[key]==1; r.feature:SetBoolValue(r.value)
+                    elseif key=="color" then r.feature:SetListIndex(values[key]-1)
+                    else r.feature:SetIntValue(values[key]) end
+                end
+            end
+        end
+    end
+    -- Settings organization: Visual, Layout, Typography and Advanced categories.
+    local groupVisual=menu.list(visual,"Visual",{},"Cores, bordas, brilho e profundidade da interface.")
+    local groupLayout=menu.list(visual,"Layout",{},"Tamanhos, espacamento e presets da interface.")
+    local groupType=menu.list(visual,"Tipografia",{},"Escala geral da interface.")
+    local groupAdv=menu.list(visual,"Avancado",{},"Animacoes e acabamento avancado.")
+    local colorRange=uiRanges.color or {1,3}
+    local theme=create(groupVisual,"Cor dos titulos",eFeatureType.Combo,"Cor de destaque dos titulos, contornos e controles do MeloCatScr.",function(f)
+        changed("color",math.max(colorRange[1],math.min(colorRange[2],f:GetListIndex()+1)))
+    end)
+    theme.feature:SetList({"Roxo MeloCat","Magenta neon","Roxo profundo","Azul eletrico","Dourado","Verde melancia"}):SetListIndex(uiPrefs.color-1); controls.color=theme
+    toggle(groupVisual,"hints","Mostrar dicas","Exibe explicacoes curtas acima das colunas.")
+    slider(groupVisual,"accentPower","Intensidade do roxo","Forca da cor de destaque em titulos, contornos, barra ativa e botoes.")
+    slider(groupVisual,"panelOpacity","Transparencia dos paineis","Opacidade dos fundos internos; valores menores deixam o preto do fundo aparecer.")
+    slider(groupVisual,"panelContrast","Contraste dos paineis","Luminosidade dos fundos internos; aumente para separar melhor os blocos.")
+    slider(groupVisual,"borderS","Intensidade da borda","Forca do contorno fino ao redor de caixas e grupos.")
+    slider(groupVisual,"radius","Arredondamento","Raio dos cantos das caixas, campos e botoes.")
+    slider(groupVisual,"glowS","Glow das bordas","Brilho do destaque da barra ativa, bordas de grupos e foco de busca.")
+    slider(groupVisual,"shadowS","Sombra","Sombra suave atras do cabecalho, barra lateral e area de conteudo.")
+    slider(groupVisual,"hoverBoost","Elevacao do hover","Quanto os itens se destacam mais ao passar o mouse.")
+    toggle(groupLayout,"spacing","Espaco entre grupos","Adiciona respiro entre os grupos. Desligue para uma lista mais compacta.")
+    toggle(groupLayout,"search","Mostrar busca","Busca por nome da opcao ou grupo na pagina aberta. Desligar limpa a busca.")
+    toggle(groupLayout,"swap","Inverter ordem dos grupos","Troca a posicao de acoes e ajustes dentro de cada grupo. Padrao: ajustes primeiro.")
+    toggle(groupLayout,"groups","Grupos abertos","Abre ou recolhe todos os grupos; depois voce pode expandir cada um individualmente.")
+    menu.action(groupLayout,"Limpar buscas",{},"Limpa a busca de opcoes e o filtro de nomes da lista de jogadores.",function() panel.filter=""; panel.search="" end)
+    slider(groupLayout,"sidebarW","Largura da sidebar","Lateral expandida em pixels; a versao recolhida mantem o tamanho compacto.")
+    slider(groupLayout,"cardH","Altura dos cards","Escala da altura dos cards de armas, cenas e status.")
+    slider(groupLayout,"btnH","Altura dos botoes","Altura dos botoes de destaque e do cabecalho.")
+    slider(groupLayout,"gapY","Espacamento entre itens","Respiro vertical entre controles e grupos.")
+    slider(groupLayout,"iconSize","Tamanho dos icones","Escala dos icones da barra lateral.")
+    slider(groupLayout,"scrollbarW","Largura da scrollbar","Espessura da barra de rolagem.")
+    slider(groupType,"uiScale","Escala da UI","Escala geral dos textos e controles; em janelas pequenas pode cortar conteudo.")
+    slider(groupAdv,"animSpeed","Velocidade das animacoes","Ritmo das transicoes de hover, barra ativa e troca de pagina.")
+    local presets={
+        {"Compacto",{uiScale=92,sidebarW=132,cardH=94,btnH=24,gapY=5,radius=8,scrollbarW=7,iconSize=13}},
+        {"Padrao",{uiScale=100,sidebarW=165,cardH=100,btnH=28,gapY=9,radius=10,scrollbarW=9,iconSize=14,
+            borderS=65,glowS=40,shadowS=35,panelOpacity=98,panelContrast=100,hoverBoost=50,animSpeed=100,accentPower=100}},
+        {"Confortavel",{uiScale=105,sidebarW=180,cardH=105,btnH=30,gapY=11,radius=11,scrollbarW=10,iconSize=15}},
+        {"Grande",{uiScale=118,sidebarW=210,cardH=112,btnH=33,gapY=13,radius=12,scrollbarW=11,iconSize=17}},
+        {"Premium",{uiScale=104,sidebarW=176,cardH=104,btnH=30,gapY=10,radius=12,scrollbarW=9,iconSize=15,
+            borderS=80,glowS=70,shadowS=55,panelOpacity=96,panelContrast=106,hoverBoost=75,animSpeed=120,accentPower=115}},
+    }
+    for _,preset in ipairs(presets) do
+        local name,values=preset[1],preset[2]
+        menu.action(groupLayout,"Preset "..name,{},"Aplica o conjunto de ajustes "..name..". Use Salvar visual para guardar.",function()
+            applyValues(values)
+            toast(I18N.text("Preset aplicado. Use Salvar visual para guardar."))
+        end)
+    end
+    local width=create(playersPage,"Largura da lista",eFeatureType.SliderInt,"Largura desejada em pixels; limitada a 45% do espaco disponivel.",function(f)
+        changed("playerWidth",math.max(110,math.min(240,f:GetIntValue())))
+    end)
+    width.feature:SetLimitValues(110,240):SetStepSize(5):SetIntValue(uiPrefs.playerWidth); controls.playerWidth=width
+    toggle(playersPage,"playerNames","Mostrar nomes","Aplica apenas a lista e o cabecalho do MeloCatScr. Desligado usa Jogador + numero; outros paineis e toasts tem ajustes proprios.")
+    toggle(playersPage,"playerIds","Mostrar IDs","Mostra o numero do slot ao lado do nome.")
+    local function decode(text)
+        if type(text)~="string" or #text>4096 then return nil end
+        text=text:gsub("\r","")
+        local values={};local version
+        for line in text:gmatch("[^\n]+") do
+            local key,value=line:match("^([%w_]+)=(%d+)$")
+            if not key or values[key]~=nil or (key~="version" and uiDefaults[key]==nil) then return nil end
+            value=tonumber(value)
+            if key=="version" then
+                if value~=1 and value~=2 then return nil end
+                version=value
+            else
+                local range=uiRanges[key]
+                if range then if value<range[1] or value>range[2] then return nil end
+                elseif value~=0 and value~=1 then return nil end
+            end
+            values[key]=value
+        end
+        if not version then return nil end
+        -- Version 1 files predate the visual keys; they keep the original nine and fall back to defaults.
+        local required=version==2 and keys
+            or {"color","hints","spacing","search","groups","swap","playerWidth","playerNames","playerIds"}
+        for _,key in ipairs(required) do if values[key]==nil then return nil end end
+        for _,key in ipairs(keys) do if values[key]==nil then values[key]=uiDefaults[key] end end
+        return values
+    end
+    local function path()
+        return meloDataPath("MeloCatScrInterface.ini")
+    end
+    local function loadPrefs(quiet)
+        local file=meloReadPath("MeloCatScrInterface.ini")
+        if not file or not FileMgr.ReadFileContent then if not quiet then toast(I18N.text("Leitura de preferencias indisponivel.")) end; return end
+        if FileMgr.DoesFileExist and not FileMgr.DoesFileExist(file) then return end
+        local ok,text=pcall(FileMgr.ReadFileContent,file)
+        local values=ok and decode(text)
+        if values then applyValues(values); if not quiet then toast(I18N.text("Preferencias carregadas.")) end
+        elseif not quiet then toast(I18N.text("Arquivo de preferencias ausente ou invalido. Ajustes atuais preservados.")) end
+    end
+    menu.action(preferences,"Salvar visual",{},"Grava MeloCatScrInterface.ini e carrega esses ajustes ao iniciar. Nao grava poderes, VPN, alvos ou nomes.",function()
+        local file=path(); if not file or not FileMgr.WriteFileContent then toast(I18N.text("Gravacao de preferencias indisponivel.")); return end
+        local lines={"version=2"}; for _,key in ipairs(keys) do lines[#lines+1]=key.."="..uiPrefs[key] end
+        local ok,result=pcall(FileMgr.WriteFileContent,file,table.concat(lines,"\n").."\n",false)
+        if ok and result==true then meloDropLegacy("MeloCatScrInterface.ini") end
+        toast(ok and result==true and "Visual salvo em MeloCatScrInterface.ini." or "Nao foi possivel salvar o visual.")
+    end)
+    menu.action(preferences,"Carregar visual",{},"Rele os ajustes visuais salvos. Arquivos invalidos nao sao executados nem aplicados.",function() loadPrefs(false) end)
+    menu.action(preferences,"Restaurar visual",{},"Volta aos padroes da interface e limpa as buscas. Clique Salvar visual se quiser guardar os padroes.",function()
+        applyValues(uiDefaults); panel.filter=""; panel.search=""; toast(I18N.text("Visual restaurado; funcoes do jogo preservadas."))
+    end)
+    loadPrefs(true)
+end
+-- INTERFACE SETTINGS END
+
+    -- Public bindings -------------------------------------------------------
+    return {
+        addInterfaceSettings = { get = function() return addInterfaceSettings end, set = function(value) addInterfaceSettings = value end }
+    }
+end
+
+end)()
+-- [/MC:presentation/preferences]
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:presentation/route_schema] 02.07 / ROUTE SCHEMA
+-- Describe the workspace routes and their page composition.
+-- ----------------------------------------------------------------------------
+factories["presentation/route_schema"]=(function()
+-- Product navigation is data; feature registration never determines page placement.
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    context:scope("presentation/route_schema", {})
+
+    -- Implementation --------------------------------------------------------
+    local routes={
+        {id="home",name="Home",hint="Status, quick actions and your library",pages={{id="start",name="Command Deck",sources={"home"}}}},
+        {id="players",name="Players",hint="Profiles, assistance, vehicles and interactions",players=true},
+        {id="self",name="Self",hint="Character, movement, destinations and abilities",pages={
+            {id="character",name="Character",sources={"agent"},exclude={"vehicle","movement","world","powers","travel"}},
+            {id="movement",name="Movement",sources={"movement"}},
+            {id="destinations",name="Destinations",sources={"travel"}},
+            {id="powers",name="Power Suite",sources={"powers"}}}},
+        {id="weapons",name="Weapons",hint="Arsenal, aiming, loadouts and effects",pages={
+            {id="center",name="Weapon Center",sources={}},
+            {id="aim",name="Aim & Combat",sources={"combat"}},
+            {id="loadouts",name="Loadouts",sources={}},
+            {id="forge",name="Weapon Forge",sources={"gunsmith"}},
+            {id="ammo",name="Ammunition",sources={"ammunition"}},
+            {id="impact",name="Impact Effects",sources={"effects"}},
+            {id="special",name="Special Gear",sources={"weapons"},exclude={"gunsmith","combat","ammunition","effects"}}}},
+        {id="vehicles",name="Vehicles",hint="Vehicle setup and driving tools",pages={{id="garage",name="Garage",sources={"vehicle"}}}},
+        {id="world",name="World",hint="World state and environmental tools",pages={{id="environment",name="Environment",sources={"world"}}}},
+        {id="fun",name="Fun",hint="Game modes and scene creation",pages={
+            {id="scenes",name="Scene Studio",sources={"activities"},exclude={"watchDogs","hitman"}},
+            {id="watchdogs",name="Watch Dogs",sources={"watchDogs"}},
+            {id="hitman",name="Hitman",sources={"hitman"}}}},
+        {id="online",name="Online",hint="Session management and live information",pages={
+            {id="pulse",name="Session Pulse",sources={"session"}},
+            {id="toolkit",name="Online Toolkit",sources={"online"}}}},
+        {id="protections",name="Protections",hint="Protection settings and checks",pages={{id="guard",name="Protection Kit",sources={"defense"}}}},
+        {id="settings",name="Settings",hint="Colors, layout and project settings",pages={{id="settings",name="Personalization",sources={"settings"}}}},
+    }
+    -- Most specific sources are assigned to their own pages; parent projections
+    -- omit those sources so every control remains reachable exactly once.
+    local contactRoutes={
+        {id="profile",name="Player Card",sources={"General"}},
+        {id="support",name="Support Kit",sources={"Friendly"}},
+        {id="garage",name="Vehicle Bay",sources={"Friendly/Veiculo","Friendly/Speed/Carro","Trolling/Veiculo","Trolling/Trolling/Vehicle Options","Malicious/Veiculo"}},
+        {id="travel",name="Rendezvous",sources={"General/Teleport","General/Acompanhar","General/Destinos Cherax"}},
+        {id="scenes",name="Scene Studio",sources={"Trolling/Fun Features","Trolling/Cenas","Malicious/Cenarios","Malicious/Personagens"}},
+        {id="effects",name="Interaction Lab",sources={"Trolling","Malicious"}},
+        {id="session",name="Session Access",sources={"Other"}},
+    }
+    local labels={
+        Central="Quick Actions",
+        Self="Personal Kit",Character="Identity",Movement="Movement Kit",Vehicle="Garage",World="Worldcraft",
+        Cuidados="Recovery Kit",Aparencia="Style Kit",Deslocamento="Destinations",Utilidades="Field Kit",
+        Invulnerabilities="Damage Shield",["Dia a dia"]="Daily Essentials",["Uso diario"]="Vehicle Care",
+        ["Super Hero"]="Power Suite",["Weapon Options"]="Armory",["Gunsmith Loadouts"]="Weapon Forge",Combat="Fire Control",
+        ["Target Settings"]="Target Rules",["Silent Aim Settings"]="Silent Aim Setup",["Triggerbot Settings"]="Auto Fire Setup",
+        ["Aimbot Settings"]="Aim Assist Setup",["Explosive Ammo Settings"]="Blast Setup",["Fire Ammo Settings"]="Incendiary Setup",["Laser Sight Settings"]="Laser Setup",
+        ["Ammo Mods"]="Ammunition",["Weapon Modifiers"]="Impact Effects",["Finger Gun"]="Gesture Gear",
+        ["Bullet Projectile"]="Projectile Workshop",["Pets & Companions"]="Companion House",["Cat Army"]="Melo Cats",
+        General="Player Card",Geral="Player Card",Friendly="Support Kit",Trolling="Interaction Lab",Malicious="Encounter Tools",
+        Interacoes="Encounter Tools",Other="Session Access",Player="Player Actions",Jogador="Player Actions",Teleport="Travel Kit",
+        Information="Player Intel",Informacoes="Player Intel",Griefing="Disruption Effects",["Anti-Modder"]="Integrity Tools",["Player Removals"]="Access Control",
+        ["Fun Features"]="Scene Toolkit",Lobby="Session Pulse",Protections="Protection Kit",Configuracoes="Personalization",
+        Veiculo="Vehicle Tools",Cenas="Scene Builder",Cenarios="Environment Kit",Personagens="Character Cast",Ajustes="Interaction Setup",
+        Acompanhar="Follow Tools",["Destinos Cherax"]="Saved Destinations",Entrega="Deliveries",Speed="Mobility Support",Poderes="Ability Support",
+        Carro="Driving Support",Corrida="Running Support",Tunagem="Vehicle Finish",Posicao="Position Tools",["Propriedades antigas"]="Property Destinations",
+        ["Vehicle Options"]="Vehicle Effects",Glitches="Visual Tricks",["Sound Spam"]="Audio Effects",Notifications="Message Studio",
+        Menu="Appearance",Jogadores="Player List",Preferencias="Visual Presets",["Links e creditos"]="About Melo",
+        Creditos="MeloCatScr",Credits="MeloCatScr",Logo="Melo Identity",
+    }
+    -- Public bindings -------------------------------------------------------
+    return {contactRoutes={get=function() return contactRoutes end},routeSchema={get=function() return routes end},sectionLabels={get=function() return labels end}}
+end
+
+end)()
+-- [/MC:presentation/route_schema]
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:presentation/studio_catalog] 02.08 / STUDIO CATALOG
+-- Register settings, credits and community information.
+-- ----------------------------------------------------------------------------
+factories["presentation/studio_catalog"]=(function()
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV = context:scope("presentation/studio_catalog", {
+        ["I18N"] = "presentation/localization",
+        ["menu"] = "presentation/workspace_state",
+        ["root"] = "presentation/workspace_state",
+        ["toast"] = "application/diagnostics"
+    })
+
+
+    -- Implementation --------------------------------------------------------
+local misc = menu.list(root, "Miscellaneous", {}, "")
+menu.divider(misc, "Links e creditos")
+menu.hyperlink(misc, "MeloCatScr Discord", "https://discord.gg/9CsVWW8TfZ")
+menu.divider(misc, "Criadores do script")
+local credits = menu.list(misc, "Credits", {}, "Equipe MeloCatScr")
+-- CREDITS DETAILS BEGIN
+do
+    local donations = menu.list(credits, "Doacoes", {}, "Doacoes ainda nao configuradas. Nenhum link ou chave de pagamento disponivel no momento.")
+    menu.action(donations, "Sem destino configurado", {}, "Doacoes ainda nao configuradas. Nenhum link ou chave de pagamento disponivel no momento.", function()
+        toast(I18N.text("Doacoes ainda nao configuradas. Nenhum link ou chave de pagamento disponivel no momento."))
+    end)
+end
+-- CREDITS DETAILS END
+local social = menu.list(credits, "MeloCatScr", {}, "")
+menu.action(social, "Tiktok", {}, "Sem link cadastrado para MeloCatScr.", function() toast(I18N.text("Tiktok: nenhum link cadastrado.")) end)
+menu.action(social, "Twitter", {}, "Sem link cadastrado para MeloCatScr.", function() toast(I18N.text("Twitter: nenhum link cadastrado.")) end)
+menu.action(social, "Instagram", {}, "Sem link cadastrado para MeloCatScr.", function() toast(I18N.text("Instagram: nenhum link cadastrado.")) end)
+menu.action(social, "Youtube", {}, "Sem link cadastrado para MeloCatScr.", function() toast(I18N.text("Youtube: nenhum link cadastrado.")) end)
+
+    -- Public bindings -------------------------------------------------------
+    return {
+        misc = { get = function() return misc end, set = function(value) misc = value end }
+    }
+end
+
+end)()
+-- [/MC:presentation/studio_catalog]
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:presentation/view_composer] 02.09 / VIEW COMPOSER
+-- Project control trees into independent navigation views.
+-- ----------------------------------------------------------------------------
+factories["presentation/view_composer"]=(function()
+-- Render trees are projections of control trees, not mutated registration trees.
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV=context:scope("presentation/view_composer", {
+        ["sectionLabels"]="presentation/route_schema",
+        ["contactRoutes"]="presentation/route_schema",
+    })
+
+    -- Implementation --------------------------------------------------------
+    local function project(source,excluded,trail)
+        if excluded[source] then return nil end
+        assert(not trail[source],"Navigation cycle: "..source.path)
+        trail[source]=true
+        local result={name=sectionLabels[source.name] or source.name,path=source.path,items={},pid=source.pid,source=source}
+        for _,ref in ipairs(source.items) do
+            if ref.child then
+                local child=project(ref.child,excluded,trail)
+                if child then result.items[#result.items+1]={name=child.name,child=child} end
+            else result.items[#result.items+1]=ref end
+        end
+        trail[source]=nil
+        return result
+    end
+    local function composeContacts(node)
+        local indexed,ownership={},{}
+        local function index(current)
+            indexed[current.path:sub(#node.path+2)]=current
+            for _,ref in ipairs(current.items) do if ref.child then index(ref.child) end end
+        end
+        index(node)
+        for _,spec in ipairs(contactRoutes) do
+            for _,path in ipairs(spec.sources) do
+                local source=indexed[path]
+                if source then ownership[source]=spec.id end
+            end
+        end
+        local items={}
+        for _,spec in ipairs(contactRoutes) do
+            local page={name=spec.name,path=node.path.."/Views/"..spec.id,items={},pid=node.pid}
+            local excluded={}
+            for source,owner in pairs(ownership) do if owner~=spec.id then excluded[source]=true end end
+            for _,path in ipairs(spec.sources) do
+                local source=indexed[path]
+                if source then
+                    local child=project(source,excluded,{})
+                    if child then page.items[#page.items+1]={name=child.name,child=child} end
+                end
+            end
+            items[#items+1]={name=page.name,child=page}
+        end
+        -- Keep future unassigned categories reachable without duplicating known pages.
+        local remaining={}
+        for source in pairs(ownership) do remaining[source]=true end
+        local extra=project(node,remaining,{})
+        if #extra.items>0 then
+            extra.name="Additional Tools";items[#items+1]={name=extra.name,child=extra}
+        end
+        node.navigation=items
+    end
+    local function composeRoutes(schema,sources)
+        local items={}
+        for _,spec in ipairs(schema) do
+            local route={name=spec.name,path="MeloCatScr/Workspace/"..spec.id,routeId=spec.id,
+                subtitle=spec.hint,items={},isPlayersCategory=spec.players}
+            if not spec.players then
+                route.viewTabs={}
+                for _,definition in ipairs(spec.pages) do
+                    local excluded={}
+                    for _,key in ipairs(definition.exclude or {}) do if sources[key] then excluded[sources[key]]=true end end
+                    local page={name=definition.name,path=route.path.."/"..definition.id,items={}}
+                    for _,key in ipairs(definition.sources) do
+                        local source=assert(sources[key],"Navigation source missing: "..key)
+                        local tree=project(source,excluded,{})
+                        if tree then page.items[#page.items+1]={name=tree.name,child=tree} end
+                    end
+                    route.viewTabs[#route.viewTabs+1]={name=page.name,node=page}
+                end
+            end
+            items[#items+1]={name=route.name,child=route}
+        end
+        return items
+    end
+    -- Public bindings -------------------------------------------------------
+    return {composeRoutes={get=function() return composeRoutes end},composeContacts={get=function() return composeContacts end}}
+end
+
+end)()
+-- [/MC:presentation/view_composer]
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:presentation/workspace_state] 02.10 / WORKSPACE STATE
+-- Own interface selection, layout preferences and the scoped palette.
+-- ----------------------------------------------------------------------------
+factories["presentation/workspace_state"]=(function()
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV=context:scope("presentation/workspace_state", {
+        ["I18N"]="presentation/localization",
+        ["ImGui"]="presentation/localization",
+    })
+
+    -- Implementation --------------------------------------------------------
+local menu,refs,aliases={},{},{}
+local layoutRevision=0
+local root={name="MeloCatScr",path="MeloCatScr",items={}}
+local playerRoots,selectedNodes={},{}
+local panel={category=-1,playerTab=0,selectedPlayer=-1,players={},names={},active={},refresh=0,search=""}
+-- INTERFACE STATE BEGIN
+local uiDefaults={color=6,hints=1,spacing=1,search=1,groups=1,swap=0,playerWidth=170,playerNames=1,playerIds=1,
+    uiScale=100,sidebarW=165,iconSize=14,cardH=100,btnH=28,gapY=9,radius=10,borderS=65,glowS=40,
+    shadowS=35,panelOpacity=98,panelContrast=100,hoverBoost=50,accentPower=100,animSpeed=100,scrollbarW=9}
+local uiPrefs={}; for key,value in pairs(uiDefaults) do uiPrefs[key]=value end
+local uiGroupRevision=0
+local uiRanges={color={1,6},playerWidth={110,240},uiScale={80,140},sidebarW={120,220},iconSize={12,22},
+    cardH={90,115},btnH={24,36},gapY={4,14},radius={4,14},borderS={0,100},glowS={0,100},shadowS={0,100},
+    panelOpacity={70,100},panelContrast={80,120},hoverBoost={0,100},accentPower={60,140},
+    animSpeed={50,200},scrollbarW={7,14}}
+-- Roxo principal #8B2CFF; opcao 6 verde melancia #9BE52A para destaque alternativo.
+local uiColors={{0.545,0.172,1.0},{0.88,0.38,0.92},{0.55,0.36,0.98},{0.40,0.62,1.0},{0.95,0.75,0.35},{0.608,0.898,0.165}}
+panel.filter=""
+panel.favorites={};panel.recent={};panel.globalSearch="";panel.collapsed=nil
+local function uiAccent()
+    local c=uiColors[uiPrefs.color] or uiColors[1]
+    local power=(uiPrefs.accentPower or 100)/100
+    return {math.min(1,c[1]*power),math.min(1,c[2]*power),math.min(1,c[3]*power)}
+end
+local function uiHeading(text,plain)
+    local c=uiAccent()
+    local target=(plain and I18N.rawImGui or ImGui)
+    if target.PushStyleColor and ImGuiCol and ImGuiCol.Text then
+        target.PushStyleColor(ImGuiCol.Text,c[1],c[2],c[3],1.0)
+        target.Text(text)
+        target.PopStyleColor(1)
+    else
+        target.Text(text)
+    end
+end
+local function uiRadius() return uiPrefs.radius or 10 end
+local function uiGlowAlpha(base) return math.max(0,math.min(1,base*((uiPrefs.glowS or 40)/40))) end
+local function uiShadowAlpha() return 0.6*((uiPrefs.shadowS or 35)/100) end
+local function uiSpeed(mult) return mult*((uiPrefs.animSpeed or 100)/100) end
+-- Palette and style values are rebuilt only when a visual preference changes.
+local paletteCache,paletteKey,styleCache,styleKey
+local function buildPalette()
+    local key=table.concat({uiPrefs.color,uiPrefs.accentPower,uiPrefs.borderS,uiPrefs.panelOpacity,
+        uiPrefs.panelContrast,uiPrefs.hoverBoost},":")
+    if paletteKey==key and paletteCache then return paletteCache end
+    local accent=uiColors[uiPrefs.color] or uiColors[1]
+    local power=(uiPrefs.accentPower or 100)/100
+    local borderA=0.85*((uiPrefs.borderS or 65)/100)
+    local panelA=(uiPrefs.panelOpacity or 98)/100
+    local contrast=(uiPrefs.panelContrast or 100)/100
+    local hover=(uiPrefs.hoverBoost or 50)/100
+    local function tint(scale,alpha) return {math.min(1,accent[1]*scale*power),math.min(1,accent[2]*scale*power),math.min(1,accent[3]*scale*power),alpha or 1} end
+    local function bg(r,g,b,a) return {math.min(1,r*contrast),math.min(1,g*contrast),math.min(1,b*contrast),a or panelA} end
+    -- Selection and hover blend the accent over neutral card grays, so the whole
+    -- theme follows the chosen color; the default accent is watermelon green.
+    local hoverAmt=0.18+0.07*hover
+    local function mix(r,g,b,amount)
+        return bg(r+(accent[1]-r)*amount,g+(accent[2]-g)*amount,b+(accent[3]-b)*amount)
+    end
+    local function accDark()
+        return bg(accent[1]*0.36*power,accent[2]*0.34*power,accent[3]*0.42*power)
+    end
+    paletteCache={
+        -- Base dark #09090C / paineis #12131A / cards #1B1D26; selecao e hover
+        -- seguem a cor de destaque (padrao verde melancia #9BE52A).
+        Text={0.902,0.902,0.902,1},TextDisabled={0.722,0.722,0.722,1},
+        WindowBg={0.035,0.035,0.047,1},ChildBg=bg(0.071,0.075,0.102),PopupBg=bg(0.086,0.090,0.122,0.99),
+        Border={0.16,0.16,0.21,borderA},BorderShadow={0,0,0,0},
+        FrameBg=bg(0.106,0.114,0.149),FrameBgHovered=mix(0.13,0.13,0.18,hoverAmt),
+        FrameBgActive=mix(0.19,0.15,0.24,hoverAmt+0.08),
+        Button=bg(0.106,0.114,0.149),ButtonHovered=mix(0.16,0.12,0.22,hoverAmt),
+        ButtonActive=mix(0.22,0.15,0.26,hoverAmt+0.15),
+        Header=accDark(),
+        HeaderHovered=bg(accent[1]*power*(0.44+0.06*hover),accent[2]*power*(0.47+0.05*hover),accent[3]*power*(0.44+0.06*hover)),
+        HeaderActive=bg(accent[1]*0.55*power,accent[2]*0.58*power,accent[3]*0.52*power),
+        CheckMark=tint(0.95),SliderGrab=tint(0.85),SliderGrabActive=tint(1),
+        Separator={0.16,0.16,0.20,0.7},SeparatorHovered=tint(0.5),SeparatorActive=tint(0.75),
+        Tab=bg(0.09,0.09,0.12),TabHovered=mix(0.12,0.115,0.17,hoverAmt),
+        TabActive=accDark(),
+        ScrollbarBg={0.028,0.028,0.038,0.8},ScrollbarGrab=tint(0.7,0.9),
+        ScrollbarGrabHovered=tint(0.86,1),ScrollbarGrabActive=tint(1,1),
+        TableBorderStrong={0.17,0.17,0.21,1},TableBorderLight={0.12,0.12,0.15,1},
+        TextSelectedBg=tint(0.55,0.45),NavHighlight=tint(1),
+    }
+    paletteKey=key
+    return paletteCache
+end
+local function buildStyles()
+    local radius=uiPrefs.radius or 10
+    local key=table.concat({radius,uiPrefs.gapY,uiPrefs.scrollbarW},":")
+    if styleKey==key and styleCache then return styleCache end
+    styleCache={
+        {"WindowPadding",14,12},{"FramePadding",10,7},{"ItemSpacing",10,uiPrefs.gapY or 9},
+        {"ItemInnerSpacing",8,5},{"CellPadding",10,8},{"IndentSpacing",16},
+        {"ChildRounding",radius},{"FrameRounding",math.max(2,radius-3)},{"PopupRounding",math.max(2,radius-1)},
+        {"ScrollbarRounding",math.max(2,radius-2)},{"GrabRounding",math.max(2,radius-5)},{"TabRounding",math.max(2,radius-4)},
+        {"ChildBorderSize",1},{"FrameBorderSize",1},{"PopupBorderSize",1},{"ScrollbarSize",uiPrefs.scrollbarW or 9},
+    }
+    styleKey=key
+    return styleCache
+end
+local themeScopeMeta={__close=function(scope)
+    if scope.variables>0 then ImGui.PopStyleVar(scope.variables) end
+    if scope.colors>0 then ImGui.PopStyleColor(scope.colors) end
+end}
+local function uiThemeScope()
+    local scope=setmetatable({colors=0,variables=0},themeScopeMeta)
+    -- Use the host's named enums; builds without styling retain a working layout.
+    if ImGui.PushStyleColor and ImGui.PopStyleColor and ImGuiCol then
+        for name,color in pairs(buildPalette()) do
+            local id=ImGuiCol[name]
+            if id~=nil then
+                ImGui.PushStyleColor(id,color[1],color[2],color[3],color[4])
+                scope.colors=scope.colors+1
+            end
+        end
+    end
+    if ImGui.PushStyleVar and ImGui.PopStyleVar and ImGuiStyleVar then
+        for _,style in ipairs(buildStyles()) do
+            local id=ImGuiStyleVar[style[1]]
+            if id~=nil then
+                if style[3] then ImGui.PushStyleVar(id,style[2],style[3])
+                else ImGui.PushStyleVar(id,style[2]) end
+                scope.variables=scope.variables+1
+            end
+        end
+    end
+    return scope
+end
+-- INTERFACE STATE END
+for pid = 0, 31 do panel.players[pid + 1] = tostring(pid) .. " - aguardando sessao" end
+
+    -- Public bindings -------------------------------------------------------
+    return {
+        aliases={get=function() return aliases end,set=function(value) aliases=value end},
+        layoutRevision={get=function() return layoutRevision end,set=function(value) layoutRevision=value end},
+        menu={get=function() return menu end,set=function(value) menu=value end},
+        panel={get=function() return panel end,set=function(value) panel=value end},
+        playerRoots={get=function() return playerRoots end,set=function(value) playerRoots=value end},
+        refs={get=function() return refs end,set=function(value) refs=value end},
+        root={get=function() return root end,set=function(value) root=value end},
+        selectedNodes={get=function() return selectedNodes end,set=function(value) selectedNodes=value end},
+        uiDefaults={get=function() return uiDefaults end,set=function(value) uiDefaults=value end},
+        uiRanges={get=function() return uiRanges end},
+        uiGroupRevision={get=function() return uiGroupRevision end,set=function(value) uiGroupRevision=value end},
+        uiHeading={get=function() return uiHeading end,set=function(value) uiHeading=value end},
+        uiAccent={get=function() return uiAccent end},
+        uiThemeScope={get=function() return uiThemeScope end},
+        uiPrefs={get=function() return uiPrefs end,set=function(value) uiPrefs=value end},
+        uiGlowAlpha={get=function() return uiGlowAlpha end},
+        uiShadowAlpha={get=function() return uiShadowAlpha end},
+        uiSpeed={get=function() return uiSpeed end},
+        uiRadius={get=function() return uiRadius end},
+    }
+end
+
+end)()
+-- [/MC:presentation/workspace_state]
+
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/cam] Camera views
+-- Owner: presentation/workspace_view; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.CAM=function(native,bind)
+    native.CAM = {}
+    native.CAM.GET_FINAL_RENDERED_CAM_COORD = bind(0xA200EB1EE790F448, "InvokeV3", "")
+    native.CAM.GET_FINAL_RENDERED_CAM_ROT = bind(0x5B4E4C817FCC2DFB, "InvokeV3", "i")
+    native.CAM.SET_CAM_NEAR_CLIP = bind(0xC7848EFCCC545182, "InvokeVoid", "if")
+    native.CAM.POINT_CAM_AT_COORD = bind(0xF75497BB865F0803, "InvokeVoid", "ifff")
+    native.CAM.CREATE_CAM = bind(0xC3981DCE61D9E13F, "InvokeInt", "sb")
+    native.CAM.DOES_CAM_EXIST = bind(0xA7A932170592B50E, "InvokeBool", "i")
+    native.CAM.DESTROY_CAM = bind(0x865908C81A2C22E9, "InvokeVoid", "ib")
+    native.CAM.SET_CAM_COORD = bind(0x4D41783FB745E42E, "InvokeVoid", "ifff")
+    native.CAM.SET_CAM_FOV = bind(0xB13C14F66A00D047, "InvokeVoid", "if")
+    native.CAM.POINT_CAM_AT_ENTITY = bind(0x5640BFF86B16E8DC, "InvokeVoid", "iifffb")
+    native.CAM.RENDER_SCRIPT_CAMS = bind(0x07E5B515DB0636FC, "InvokeVoid", "bbibbi")
+    native.CAM.STOP_GAMEPLAY_CAM_SHAKING = bind(0x0EF93E9F3D08C178, "InvokeVoid", "b")
+    native.CAM.GET_RENDERING_CAM = bind(0x5234F9F10919EABA, "InvokeInt", "")
+    native.CAM.SET_CAM_ROT = bind(0x85973643155D0B07, "InvokeVoid", "ifffi")
+    native.CAM.ATTACH_CAM_TO_ENTITY = bind(0xFEDB7D269E8C60E3, "InvokeVoid", "iifffb")
+    native.CAM.DETACH_CAM = bind(0xA2FABBE87F4BAD82, "InvokeVoid", "i")
+    native.CAM.SET_CAM_ACTIVE = bind(0x026FB97D0A425F84, "InvokeVoid", "ib")
+    native.CAM.GET_CAM_COORD = bind(0xBAC038F7459AE5AE, "InvokeV3", "i")
+    native.CAM.GET_GAMEPLAY_CAM_RELATIVE_PITCH = bind(0x3A6867B4845BEDA2, "InvokeFloat", "")
+    native.CAM.GET_GAMEPLAY_CAM_RELATIVE_HEADING = bind(0x743607648ADD4587, "InvokeFloat", "")
+    native.CAM.SET_GAMEPLAY_CAM_RELATIVE_PITCH = bind(0x6D0858B8EDFD2B7D, "InvokeVoid", "ff")
+    native.CAM.SET_GAMEPLAY_CAM_RELATIVE_HEADING = bind(0xB4EC2312F4E5B1F1, "InvokeVoid", "f")
+end
+-- [/MC:natives/cam]
+
+-- ----------------------------------------------------------------------------
+-- [MC:presentation/workspace_view] 02.11 / WORKSPACE VIEW
+-- Render workspaces, grouped controls and player panels.
+-- ----------------------------------------------------------------------------
+factories["presentation/workspace_view"]=(function()
+return function(context)
+    -- Dependencies ----------------------------------------------------------
+    local _ENV = context:scope("presentation/workspace_view", {
+        ["ClickGUI"] = "presentation/localization",
+        ["FeatureMgr"] = "presentation/localization",
+        ["I18N"] = "presentation/localization",
+        ["ImGui"] = "presentation/localization",
+        ["NETWORK"] = "platform/native_gateway",
+        ["layoutRevision"] = "presentation/workspace_state",
+        ["panel"] = "presentation/workspace_state",
+        ["playerRoots"] = "presentation/workspace_state",
+        ["report"] = "application/diagnostics",
+        ["root"] = "presentation/workspace_state",
+        ["string"] = "presentation/localization",
+        ["toast"] = "application/diagnostics",
+        ["uiGroupRevision"] = "presentation/workspace_state",
+        ["uiHeading"] = "presentation/workspace_state",
+        ["uiAccent"] = "presentation/workspace_state",
+        ["uiThemeScope"] = "presentation/workspace_state",
+        ["uiPrefs"] = "presentation/workspace_state",
+        ["uiGlowAlpha"] = "presentation/workspace_state",
+        ["uiShadowAlpha"] = "presentation/workspace_state",
+        ["uiSpeed"] = "presentation/workspace_state",
+        ["uiRadius"] = "presentation/workspace_state",
+        ["uiGateOpen"] = "presentation/identity"
+    })
+
+
+    -- Implementation --------------------------------------------------------
+-- Layout metadata belongs to controls, so a button stays beside its own inputs.
+-- Gameplay callbacks and their IDs remain independent of presentation order.
+local renderPanel, renderPlayersPanel
+local configuredActions = { ["Take The Wheel"] = true, ["Transformar Agora"] = true }
+
+local routeGlyphs={
+    home="house",players="users",self="user",weapons="crosshair",vehicles="car",
+    world="globe",fun="smile",online="network",protections="shield",settings="sliders",
+}
+local function uiTime()
+    if ImGui.GetTime then local ok,t=pcall(ImGui.GetTime); if ok and type(t)=="number" then return t end end
+    return os.clock()
+end
+local uiClocks={}
+local function uiDt(key)
+    local now=uiTime();local last=uiClocks[key];uiClocks[key]=now
+    if not last then return 0 end
+    return math.max(0,math.min(0.1,now-last))
+end
+local function uiLerp(current,target,dt,speed)
+    return current+(target-current)*math.max(0,math.min(1,dt*speed))
+end
+local function uiTip(name,show)
+    if not (ImGui.IsItemHovered and ImGui.IsItemHovered(0)) then return false end
+    if ImGui.SetMouseCursor and ImGuiMouseCursor then ImGui.SetMouseCursor(ImGuiMouseCursor.Hand or 7) end
+    if show and name and ImGui.SetTooltip then ImGui.SetTooltip(name) end
+    return true
+end
+local iconsOk=not not (ImGui.AddRectFilled and ImGui.AddLine and ImGui.AddCircle and ImGui.AddCircleFilled
+    and ImGui.AddTriangleFilled and ImGui.GetItemRectMin and ImGui.GetItemRectMax)
+local glyphIcons={}
+local function glyphHouse(x,y,s,r,g,b,a)
+    ImGui.AddTriangleFilled(x,y+s*0.52,x+s*0.5,y,x+s,y+s*0.52,r,g,b,a)
+    ImGui.AddRectFilled(x+s*0.16,y+s*0.5,x+s*0.84,y+s*0.96,r,g,b,a,s*0.08)
+    ImGui.AddRectFilled(x+s*0.42,y+s*0.66,x+s*0.58,y+s*0.96,math.floor(r*0.35),math.floor(g*0.35),math.floor(b*0.38),a,1)
+end
+local function glyphUsers(x,y,s,r,g,b,a)
+    ImGui.AddCircleFilled(x+s*0.32,y+s*0.30,s*0.15,r,g,b,a)
+    ImGui.AddRectFilled(x+s*0.10,y+s*0.50,x+s*0.54,y+s*0.96,r,g,b,a,s*0.14)
+    ImGui.AddCircleFilled(x+s*0.70,y+s*0.34,s*0.13,math.floor(r*0.8),math.floor(g*0.8),math.floor(b*0.85),a)
+    ImGui.AddRectFilled(x+s*0.50,y+s*0.56,x+s*0.90,y+s*0.96,math.floor(r*0.8),math.floor(g*0.8),math.floor(b*0.85),a,s*0.12)
+end
+local function glyphUser(x,y,s,r,g,b,a)
+    ImGui.AddCircleFilled(x+s*0.5,y+s*0.28,s*0.18,r,g,b,a)
+    ImGui.AddRectFilled(x+s*0.20,y+s*0.55,x+s*0.80,y+s*0.96,r,g,b,a,s*0.18)
+end
+local function glyphCrosshair(x,y,s,r,g,b,a)
+    ImGui.AddCircle(x+s*0.5,y+s*0.5,s*0.36,r,g,b,a,24,1.6)
+    ImGui.AddLine(x+s*0.5,y,x+s*0.5,y+s*0.22,r,g,b,a,1.6)
+    ImGui.AddLine(x+s*0.5,y+s*0.78,x+s*0.5,y+s,r,g,b,a,1.6)
+    ImGui.AddLine(x,y+s*0.5,x+s*0.22,y+s*0.5,r,g,b,a,1.6)
+    ImGui.AddLine(x+s*0.78,y+s*0.5,x+s,y+s*0.5,r,g,b,a,1.6)
+    ImGui.AddCircleFilled(x+s*0.5,y+s*0.5,s*0.07,r,g,b,a)
+end
+local function glyphCar(x,y,s,r,g,b,a)
+    ImGui.AddRectFilled(x+s*0.20,y+s*0.20,x+s*0.64,y+s*0.48,r,g,b,a,s*0.08)
+    ImGui.AddRectFilled(x,y+s*0.46,x+s,y+s*0.76,r,g,b,a,s*0.10)
+    ImGui.AddCircleFilled(x+s*0.26,y+s*0.82,s*0.13,math.floor(r*0.75),math.floor(g*0.75),math.floor(b*0.8),a)
+    ImGui.AddCircleFilled(x+s*0.74,y+s*0.82,s*0.13,math.floor(r*0.75),math.floor(g*0.75),math.floor(b*0.8),a)
+end
+local function glyphGlobe(x,y,s,r,g,b,a)
+    ImGui.AddCircle(x+s*0.5,y+s*0.5,s*0.44,r,g,b,a,24,1.6)
+    ImGui.AddLine(x+s*0.5,y+s*0.06,x+s*0.5,y+s*0.94,r,g,b,a,1.3)
+    ImGui.AddLine(x+s*0.22,y+s*0.16,x+s*0.22,y+s*0.84,r,g,b,a,1.1)
+    ImGui.AddLine(x+s*0.78,y+s*0.16,x+s*0.78,y+s*0.84,r,g,b,a,1.1)
+    ImGui.AddLine(x+s*0.06,y+s*0.5,x+s*0.94,y+s*0.5,r,g,b,a,1.3)
+end
+local function glyphSmile(x,y,s,r,g,b,a)
+    ImGui.AddCircle(x+s*0.5,y+s*0.5,s*0.45,r,g,b,a,24,1.6)
+    ImGui.AddCircleFilled(x+s*0.35,y+s*0.38,s*0.07,r,g,b,a)
+    ImGui.AddCircleFilled(x+s*0.65,y+s*0.38,s*0.07,r,g,b,a)
+    ImGui.AddLine(x+s*0.30,y+s*0.60,x+s*0.5,y+s*0.72,r,g,b,a,1.6)
+    ImGui.AddLine(x+s*0.5,y+s*0.72,x+s*0.70,y+s*0.60,r,g,b,a,1.6)
+end
+local function glyphNetwork(x,y,s,r,g,b,a)
+    ImGui.AddCircleFilled(x+s*0.5,y+s*0.5,s*0.13,r,g,b,a)
+    ImGui.AddCircleFilled(x+s*0.16,y+s*0.16,s*0.09,r,g,b,a)
+    ImGui.AddCircleFilled(x+s*0.84,y+s*0.16,s*0.09,r,g,b,a)
+    ImGui.AddCircleFilled(x+s*0.84,y+s*0.84,s*0.09,r,g,b,a)
+    ImGui.AddLine(x+s*0.5,y+s*0.5,x+s*0.16,y+s*0.16,r,g,b,a,1.4)
+    ImGui.AddLine(x+s*0.5,y+s*0.5,x+s*0.84,y+s*0.16,r,g,b,a,1.4)
+    ImGui.AddLine(x+s*0.5,y+s*0.5,x+s*0.84,y+s*0.84,r,g,b,a,1.4)
+end
+local function glyphShield(x,y,s,r,g,b,a)
+    ImGui.AddRectFilled(x+s*0.16,y+s*0.05,x+s*0.84,y+s*0.55,r,g,b,a,s*0.12)
+    ImGui.AddTriangleFilled(x+s*0.16,y+s*0.48,x+s*0.84,y+s*0.48,x+s*0.5,y+s*0.97,r,g,b,a)
+    local d=math.floor(r*0.35)
+    ImGui.AddLine(x+s*0.34,y+s*0.46,x+s*0.46,y+s*0.58,d,math.floor(g*0.35),math.floor(b*0.38),a,1.8)
+    ImGui.AddLine(x+s*0.46,y+s*0.58,x+s*0.68,y+s*0.32,d,math.floor(g*0.35),math.floor(b*0.38),a,1.8)
+end
+local function glyphSliders(x,y,s,r,g,b,a)
+    ImGui.AddLine(x,y+s*0.30,x+s,y+s*0.30,r,g,b,a,1.6)
+    ImGui.AddCircleFilled(x+s*0.64,y+s*0.30,s*0.11,r,g,b,a)
+    ImGui.AddLine(x,y+s*0.68,x+s,y+s*0.68,r,g,b,a,1.6)
+    ImGui.AddCircleFilled(x+s*0.36,y+s*0.68,s*0.11,r,g,b,a)
+end
+local function glyphDot(x,y,s,r,g,b,a)
+    ImGui.AddCircleFilled(x+s*0.5,y+s*0.5,s*0.28,r,g,b,a)
+end
+glyphIcons={house=glyphHouse,users=glyphUsers,user=glyphUser,crosshair=glyphCrosshair,car=glyphCar,
+    globe=glyphGlobe,smile=glyphSmile,network=glyphNetwork,shield=glyphShield,sliders=glyphSliders,dot=glyphDot}
+local function uiDrawIcon(name,cx,cy,size,color,alpha)
+    if not iconsOk then return end
+    local fn=glyphIcons[name] or glyphIcons.dot
+    local r=math.floor(color[1]*255+0.5);local g=math.floor(color[2]*255+0.5);local b=math.floor(color[3]*255+0.5)
+    local ok,err=pcall(fn,cx-size/2,cy-size/2,size,r,g,b,alpha or 255)
+    if not ok then
+        iconsOk=false
+        report("Icones da barra lateral desativados: "..tostring(err))
+    end
+end
+
+local function uiFontScale(mult)
+    if ImGui.SetWindowFontScale then ImGui.SetWindowFontScale(((uiPrefs.uiScale or 100)/100)*(mult or 1)) end
+end
+local function uiColInt(r,g,b,a)
+    local R=math.floor(r*255+0.5);local G=math.floor(g*255+0.5)
+    local B=math.floor(b*255+0.5);local A=math.floor((a or 1)*255+0.5)
+    return R+G*256+B*65536+A*16777216
+end
+local placeholderOk=true
+local function uiInputHint(x,y,text)
+    if not placeholderOk or not ImGui.AddText then return end
+    local ok=pcall(ImGui.AddText,x,y,text,115,110,140,255)
+    if not ok then ok=pcall(ImGui.AddText,x,y,text,0.45,0.43,0.55,1) end
+    if not ok then placeholderOk=false end
+end
+local function uiOutline(alpha,radius)
+    if not (iconsOk and ImGui.AddRect and ImGui.GetItemRectMin and ImGui.GetItemRectMax) then return end
+    if alpha<=0.02 then return end
+    local minX,minY=ImGui.GetItemRectMin()
+    local maxX,maxY=ImGui.GetItemRectMax()
+    local c=uiAccent()
+    ImGui.AddRect(minX-1,minY-1,maxX+1,maxY+1,
+        math.floor(c[1]*255+0.5),math.floor(c[2]*255+0.5),math.floor(c[3]*255+0.5),
+        math.floor(math.min(1,alpha)*255+0.5),radius or 6,0,1.4)
+end
+local function uiFieldOutline(alpha,radius,fieldW)
+    if not (iconsOk and ImGui.AddRect and ImGui.GetItemRectMin and ImGui.GetItemRectMax) then return end
+    if alpha<=0.02 then return end
+    local minX,minY=ImGui.GetItemRectMin()
+    local maxX,maxY=ImGui.GetItemRectMax()
+    if fieldW then maxX=minX+fieldW end
+    local c=uiAccent()
+    ImGui.AddRect(minX-1,minY-1,maxX+1,maxY+1,
+        math.floor(c[1]*255+0.5),math.floor(c[2]*255+0.5),math.floor(c[3]*255+0.5),
+        math.floor(math.min(1,alpha)*255+0.5),radius or 6,0,1.4)
+end
+local function uiMagnifier(cx,cy,r)
+    if not (iconsOk and ImGui.AddCircle and ImGui.AddLine) then return end
+    ImGui.AddCircle(cx,cy,r,150,145,168,235,20,1.5)
+    ImGui.AddLine(cx+r*0.70,cy+r*0.70,cx+r*1.55,cy+r*1.55,150,145,168,235,1.6)
+end
+local function uiButtonOutline()
+    local hov=(ImGui.IsItemHovered and ImGui.IsItemHovered(0))and 1 or 0
+    uiOutline(uiGlowAlpha(0.26+0.5*hov),6)
+end
+
+local function uiTitle(text, scale)
+    uiFontScale(scale or 1.16)
+    uiHeading(text)
+    uiFontScale()
+end
+
+local function uiSection(title, note)
+    uiHeading(title)
+    if note and note ~= "" and uiPrefs.hints ~= 0 then ImGui.TextDisabled(note) end
+end
+
+local function accentButton(label, id, width, height)
+    local base=uiPrefs.btnH or 28
+    local pressed
+    if ImGui.PushStyleColor and ImGuiCol then
+        local c = uiAccent()
+        local lift=(uiPrefs.hoverBoost or 50)/200
+        ImGui.PushStyleColor(ImGuiCol.Button, c[1]*0.34, c[2]*0.30, c[3]*0.44, 1.0)
+        ImGui.PushStyleColor(ImGuiCol.ButtonHovered, c[1]*(0.54+lift), c[2]*(0.48+lift), c[3]*(0.68+lift), 1.0)
+        ImGui.PushStyleColor(ImGuiCol.ButtonActive, c[1]*0.72, c[2]*0.66, c[3]*0.88, 1.0)
+        pressed = ImGui.Button(label.."##"..id, width or 0, height or base)
+        ImGui.PopStyleColor(3)
+    else
+        pressed = ImGui.Button(label.."##"..id, width or 0, height or base)
+    end
+    uiButtonOutline()
+    return pressed
+end
+local function pushCardBg()
+    if ImGui.PushStyleColor and ImGuiCol and ImGuiCol.ChildBg then
+        local contrast=(uiPrefs.panelContrast or 100)/100
+        local opacity=(uiPrefs.panelOpacity or 98)/100
+        ImGui.PushStyleColor(ImGuiCol.ChildBg,math.min(1,0.106*contrast),math.min(1,0.114*contrast),math.min(1,0.149*contrast),opacity)
+        return 1
+    end
+    return 0
+end
+local function uiCardHeight(base)
+    return math.floor(base*((uiPrefs.cardH or 100)/100)+0.5)
+end
+local function uiHeaderHeight()
+    return math.max(56,math.floor((((uiPrefs.btnH or 28)+26)*((uiPrefs.uiScale or 100)/100))+0.5))
+end
+
+local function statBar(label, value, id)
+    ImGui.TextDisabled(label.."  "..value.."%")
+    local avail = ImGui.GetContentRegionAvail() or 80
+    local frac = math.max(0.06, math.min(1, value/100))
+    local styled = ImGui.PushStyleColor ~= nil and ImGuiCol ~= nil and ImGuiCol.ChildBg ~= nil
+    if styled then
+        local a=uiAccent()
+        ImGui.PushStyleColor(ImGuiCol.ChildBg,a[1],a[2],a[3],1.0)
+    end
+    ImGui.BeginChild("StatBar##"..id, math.max(8, math.floor(avail*frac)), 7, false, 0)
+    ImGui.EndChild()
+    if styled then ImGui.PopStyleColor(1) end
+end
+
+local familyProfiles = {
+    Handgun = {62,54,74,58}, SMG = {58,52,66,84}, Rifle = {70,72,70,76}, Shotgun = {86,34,48,44},
+    Sniper = {95,96,90,26}, Heavy = {92,80,40,34}, Special = {74,66,62,60}, Melee = {48,14,60,52},
+    Throwable = {80,40,50,30}, Utility = {40,30,55,46}, Laser = {66,74,84,64}, Launchers = {96,84,36,24},
+    Explosive = {94,44,44,28}, Gesture = {44,40,58,66}, Experimental = {72,64,68,62},
+}
+local statNames = { "Damage", "Range", "Accuracy", "Fire Rate" }
+
+local function statsFor(key, family)
+    local base = familyProfiles[family] or familyProfiles.Experimental
+    local seed = 7
+    key = tostring(key or family or "")
+    for i = 1, #key do seed = (seed*31 + key:byte(i)) % 99991 end
+    local out = {}
+    for i, value in ipairs(base) do
+        local jitter = math.floor(seed / (2^i)) % 11
+        out[i] = math.max(8, math.min(99, value - 5 + jitter))
+    end
+    return out
+end
+
+local function gatherControls(node, into)
+    for _, ref in ipairs(node.items) do
+        if ref.child then gatherControls(ref.child, into)
+        elseif ref.id then into[#into + 1] = ref end
+    end
+end
+local function isInput(ref)
+    return ref.kind and ref.kind ~= eFeatureType.Button and ref.kind ~= eFeatureType.Toggle
+end
+local function buildLayout(node)
+    if node.layout and node.layout.revision == layoutRevision then return node.layout end
+    local layout = {quick = {}, configured = {}, revision = layoutRevision}
+    local included,allControls={},{}
+    gatherControls(node,allControls)
+    for _,ref in ipairs(allControls) do included[ref]=true end
+    local function add(side, title, controls)
+        -- An alias must not draw the same ImGui ID twice when its original is on this page.
+        local unique={}
+        for _,ref in ipairs(controls) do
+            if not (ref.aliasOf and included[ref.aliasOf]) then unique[#unique+1]=ref end
+        end
+        controls=unique
+        if #controls == 0 then return end
+        local inputs = 0
+        for _, ref in ipairs(controls) do if isInput(ref) then inputs = inputs + 1 end end
+        local groups = layout[side]
+        groups[#groups + 1] = {title = title, controls = controls, inputs = inputs, order = #groups + 1}
+    end
+    local function collect(current, prefix)
+        local paired, settings, directInputs, configToggle = {}, {}, 0, false
+        for _, ref in ipairs(current.items) do
+            if ref.child then
+                local sourceName=ref.child.source and ref.child.source.name or ref.name
+                local featureName = sourceName:match("^(.-) Settings$")
+                if featureName then
+                    for _, sibling in ipairs(current.items) do
+                        if sibling.id and not sibling.child and sibling.name == featureName then
+                            settings[ref] = sibling; paired[sibling] = true; break
+                        end
+                    end
+                end
+            elseif isInput(ref) then
+                directInputs = directInputs + 1
+                -- Independent selectors configure a system; paired sliders configure only their action.
+                if not ref.configGroup then configToggle = true end
+            end
+        end
+        local quick, configured, actionGroups, groupOrder = {}, {}, {}, {}
+        local system = configToggle or directInputs > 1 or (current.source and current.source.name or current.name):match(" Settings$") ~= nil
+        for _, ref in ipairs(current.items) do
+            if ref.child then
+                local title = prefix == "" and ref.name or prefix .. " / " .. ref.name
+                if settings[ref] then
+                    local controls = {settings[ref]}
+                    gatherControls(ref.child, controls)
+                    add("configured", title:gsub(" Settings$", ""), controls)
+                elseif not ref.viewOnly then collect(ref.child, title) end
+            elseif ref.id and not paired[ref] then
+                local needsConfig = isInput(ref) or ref.configGroup or configuredActions[ref.name]
+                    or (system and ref.kind == eFeatureType.Toggle)
+                if needsConfig then
+                    if ref.configGroup and not system then
+                        local key = ref.configGroup
+                        if not actionGroups[key] then actionGroups[key] = {}; groupOrder[#groupOrder + 1] = key end
+                        actionGroups[key][#actionGroups[key] + 1] = ref
+                    else configured[#configured + 1] = ref end
+                else quick[#quick + 1] = ref end
+            end
+        end
+        local title = prefix ~= "" and prefix or current.name
+        add("quick", title, quick)
+        add("configured", title, configured)
+        for _, group in ipairs(groupOrder) do add("configured", title .. " / " .. group.name, actionGroups[group]) end
+    end
+    collect(node, "")
+    table.sort(layout.configured, function(a, b)
+        if a.inputs ~= b.inputs then return a.inputs > b.inputs end
+        return a.order < b.order
+    end)
+    node.layout = layout
+    return layout
+end
+local function renderControl(ref)
+    if ref.renderFailure and ref.renderFailure.id~=ref.id then ref.renderFailure=nil end
+    if not ref.renderFailure then
+        local ok,err=pcall(function()
+            -- Never reuse a cached native object if the core feature disappeared or changed type.
+            if ref.cheraxNative and FeatureMgr.GetFeature then
+                local current=FeatureMgr.GetFeature(ref.id)
+                assert(current and current:GetHash()==ref.id and current:GetType()==ref.kind
+                    and not current:IsPlayerFeature(),"Cherax control changed or is no longer available")
+            end
+            ClickGUI.RenderFeature(ref.id)
+        end)
+        if not ok then
+            ref.renderFailure={id=ref.id,message=tostring(err)}
+            -- Only once per failed control; no native or toast error flood every frame.
+            pcall(report,"Interface / "..ref.path..": "..tostring(err))
+        end
+    end
+    if ref.renderFailure then
+        ImGui.TextWrapped("%s",I18N.text(ref.name).." - "..I18N.text("Interface error. Details: MeloCatScrErrors.txt"))
+        if ImGui.Button(I18N.text("Retry control").."##MeloCatScrRetry"..tostring(ref.id)) then
+            ref.renderFailure=nil
+        end
+    end
+end
+-- Personal library data never executes code and never saves gameplay activation.
+local function libraryPath()
+    return meloDataPath("MeloCatScrLibrary.ini")
+end
+local function loadLibrary()
+    local path=meloReadPath("MeloCatScrLibrary.ini")
+    if not path or not FileMgr.ReadFileContent then return end
+    if FileMgr.DoesFileExist and not FileMgr.DoesFileExist(path) then return end
+    local ok,text=pcall(FileMgr.ReadFileContent,path)
+    if not ok or type(text)~="string" or #text>65536 or not text:match("^version=1[\r\n]")then return end
+    panel.weaponFavorites=panel.weaponFavorites or {}
+    for line in text:gmatch("[^\r\n]+")do
+        local id=line:match("^favorite=(%d+)$")
+        local hash=line:match("^weapon=(WEAPON_[%w_]+)$")
+        if id then panel.favorites[tonumber(id)]=true end
+        if hash then panel.weaponFavorites[hash]=true end
+    end
+end
+local function saveLibrary()
+    local path=libraryPath()
+    if not path or not FileMgr.WriteFileContent then return end
+    local lines={"version=1"}
+    for id,enabled in pairs(panel.favorites)do if enabled then lines[#lines+1]="favorite="..id end end
+    for hash,enabled in pairs(panel.weaponFavorites or {})do if enabled then lines[#lines+1]="weapon="..hash end end
+    local text=table.concat(lines,"\n").."\n"
+    context:read("application/task_dispatcher","enqueue")(function()
+        local ok,result=pcall(FileMgr.WriteFileContent,path,text,false)
+        if ok and result==true then meloDropLegacy("MeloCatScrLibrary.ini")
+        else report("Personal library could not be saved; favorites remain available in this session.")end
+    end)
+end
+loadLibrary()
+local function favorite(ref)
+    local active=panel.favorites[ref.id]
+    if ImGui.Button((active and "Saved" or "+ Favorite").."##favorite"..ref.id) then
+        panel.favorites[ref.id]=not active or nil;saveLibrary()
+    end
+end
+local function featureCard(ref,id)
+    local cardPush=pushCardBg()
+    local visible=ImGui.BeginChild("FeatureCard##"..id..ref.id,0,uiCardHeight(112),true,0)
+    if visible then
+        uiFontScale()
+        uiHeading(ref.name)
+        ImGui.SameLine()
+        favorite(ref)
+        renderControl(ref)
+    end
+    ImGui.EndChild()
+    if cardPush>0 then ImGui.PopStyleColor(cardPush) end
+end
+local function renderControlGroups(node,id)
+    local layout=buildLayout(node)
+    local query=(panel.filter or ""):lower()
+    local shown=0
+    local order=uiPrefs.swap==1 and {layout.configured,layout.quick} or {layout.quick,layout.configured}
+    for _,groups in ipairs(order) do
+        for index,group in ipairs(groups) do
+            local matches={}
+            for _,ref in ipairs(group.controls) do
+                if query=="" or I18N.text(group.title):lower():find(query,1,true) or I18N.text(ref.name):lower():find(query,1,true) then matches[#matches+1]=ref end
+            end
+            if #matches>0 then
+                if uiPrefs.spacing~=0 and shown>0 then ImGui.Spacing() end
+                shown=shown+#matches
+                local groupFlags=uiPrefs.groups==1 and (ImGuiTreeNodeFlags and ImGuiTreeNodeFlags.DefaultOpen or 32) or 0
+                local open=ImGui.CollapsingHeader(group.title.."  /  "..#matches.."##"..id..group.order..tostring(groups==layout.quick).."-"..uiGroupRevision,groupFlags)
+                if open or query~="" then
+                    local npush=0
+                    if ImGui.PushStyleColor and ImGuiCol and ImGuiCol.Border then
+                        local c=uiAccent()
+                        ImGui.PushStyleColor(ImGuiCol.Border,c[1]*0.40,c[2]*0.36,c[3]*0.52,uiGlowAlpha(0.85))
+                        npush=npush+1
+                    end
+                    npush=npush+pushCardBg()
+                    local childH=uiCardHeight(math.min(360,44+#matches*72))
+                    local visible=ImGui.BeginChild("ControlGroup##"..id..group.order..tostring(groups==layout.quick),0,childH,true,0)
+                    if visible then
+                        uiFontScale()
+                        for _,ref in ipairs(matches) do
+                            ImGui.PushItemWidth(-1);renderControl(ref);ImGui.PopItemWidth()
+                            favorite(ref);ImGui.Spacing()
+                        end
+                    end
+                    ImGui.EndChild()
+                    if npush>0 then ImGui.PopStyleColor(npush) end
+                end
+            end
+        end
+    end
+    if shown==0 then ImGui.TextDisabled("No matching controls.") end
+end
+local function openRoute(routeId)
+    for i,ref in ipairs(root.navigation or {}) do
+        if ref.child.routeId==routeId then panel.category=i-1;panel.globalSearch="";panel.library=nil;panel.filter="";return end
+    end
+end
+local function queueWeapon(action,index,slot,name)
+    local service=context:read("equipment/weapon_workbench","weaponCenter")
+    context:read("application/task_dispatcher","enqueue")(function() service.run(action,index,slot,name) end)
+end
+local function weaponEntries(service)
+    local entries={}
+    for index,w in ipairs(service.catalog)do entries[#entries+1]={index=index,key=w.hash,label=w.label,family=w.family,parts=w.components and #w.components or 0}end
+    local specialRefs={}
+    for _,route in ipairs(root.navigation or {})do
+        if route.child.routeId=="weapons" then
+            for _,page in ipairs(route.child.viewTabs or {})do if page.name=="Special Gear" then gatherControls(page.node,specialRefs)end end
+        end
+    end
+    for _,ref in ipairs(specialRefs)do
+        local raw=ref.name:lower()
+        local family=(raw:find("laser") and "Laser") or ((raw:find("launcher") or raw:find("rpg")) and "Launchers") or ((raw:find("explos") or raw:find("firework")) and "Explosive") or (ref.path:find("Finger Gun",1,true) and "Gesture") or "Experimental"
+        entries[#entries+1]={ref=ref,key="feature:"..ref.id,label=I18N.text(ref.name),family=family}
+    end
+    return entries,specialRefs
+end
+local controlIndex,controlRevision
+local function allControls()
+    if controlRevision==layoutRevision then return controlIndex end
+    local result={}
+    for _,ref in pairs(context:read("presentation/workspace_state","refs")) do
+        if ref.id and not ref.child then result[#result+1]=ref end
+    end
+    table.sort(result,function(a,b)return a.path<b.path end)
+    controlIndex=result;controlRevision=layoutRevision
+    return result
+end
+local function suggestionStrip(items,onPick,id)
+    if not items or #items==0 then return end
+    ImGui.TextDisabled("Suggestions")
+    local columns=math.max(1,math.min(#items,math.max(1,math.floor((ImGui.GetContentRegionAvail() or 240)/130))))
+    if ImGui.BeginTable("Suggestions##"..id,columns,0) then
+        local accent=uiAccent()
+        local hoverLift=(uiPrefs.hoverBoost or 50)/200
+        local headerPush=0
+        if ImGui.PushStyleColor and ImGuiCol then
+            if ImGuiCol.Header then ImGui.PushStyleColor(ImGuiCol.Header,accent[1]*0.40,accent[2]*0.35,accent[3]*0.56,1);headerPush=headerPush+1 end
+            if ImGuiCol.HeaderHovered then ImGui.PushStyleColor(ImGuiCol.HeaderHovered,accent[1]*(0.34+hoverLift),accent[2]*(0.29+hoverLift),accent[3]*(0.50+hoverLift),1);headerPush=headerPush+1 end
+            if ImGuiCol.HeaderActive then ImGui.PushStyleColor(ImGuiCol.HeaderActive,accent[1]*0.54,accent[2]*0.48,accent[3]*0.70,1);headerPush=headerPush+1 end
+        end
+        for i,item in ipairs(items) do
+            if (i-1)%columns==0 then ImGui.TableNextRow() end
+            ImGui.TableSetColumnIndex((i-1)%columns)
+            if ImGui.Selectable(item.label.."##sugg"..id..i,false,0,0,26) then onPick(item) end
+        end
+        if headerPush>0 then ImGui.PopStyleColor(headerPush) end
+        ImGui.EndTable()
+    end
+end
+local function renderLibrary(mode)
+    local query=(panel.globalSearch or ""):lower();local list={}
+    if mode=="recent" then
+        local refs=context:read("presentation/workspace_state","refs")
+        for _,id in ipairs(panel.recent) do local r=refs[id];if r and not panel.favorites[r.id] and (not r.pid or panel.active[r.pid]) then list[#list+1]=r end end
+    else
+        for _,ref in ipairs(allControls()) do
+            if (not ref.pid or panel.active[ref.pid]) and (mode~="favorites" or panel.favorites[ref.id]) and (query=="" or I18N.text(ref.name):lower():find(query,1,true) or ref.path:lower():find(query,1,true)) then list[#list+1]=ref end
+        end
+    end
+    if mode=="search" and query~="" then
+        local sug={}
+        for _,ref in ipairs(list) do
+            local name=I18N.text(ref.name)
+            if name:lower()~=query and #sug<6 then sug[#sug+1]={label=name} end
+        end
+        suggestionStrip(sug,function(item) panel.globalSearch=item.label end,"global")
+    end
+    local pageKey="results:"..mode..":"..query
+    panel.resultPage=panel.resultKey==pageKey and (panel.resultPage or 1) or 1;panel.resultKey=pageKey
+    local pages=math.max(1,math.ceil(#list/12));panel.resultPage=math.min(panel.resultPage,pages)
+    ImGui.TextDisabled(#list.." controls / page "..panel.resultPage.." of "..pages)
+    if panel.resultPage>1 and ImGui.Button("Previous##results") then panel.resultPage=panel.resultPage-1 end
+    if panel.resultPage<pages and ImGui.Button("Next##results") then panel.resultPage=panel.resultPage+1 end
+    for i=(panel.resultPage-1)*12+1,math.min(#list,panel.resultPage*12) do featureCard(list[i],mode) end
+    if #list==0 then
+        if mode=="search" then ImGui.TextWrapped("No controls match this search.")
+        else ImGui.TextWrapped("Mark a control as Favorite or use a control to see it here.") end
+    end
+end
+local function homeSessionTypeText()
+    if not NETWORK.NETWORK_IS_IN_SESSION() then return "Offline" end
+    if NETWORK.NETWORK_SESSION_IS_SOLO() then return "Solo" end
+    if NETWORK.NETWORK_SESSION_IS_CLOSED_FRIENDS() then return "Friends only" end
+    if NETWORK.NETWORK_SESSION_IS_CLOSED_CREW() then return "Crew only" end
+    if NETWORK.NETWORK_SESSION_IS_PRIVATE() then return "Private" end
+    return "Not private"
+end
+local function ipStringFor(id)
+    return Players.GetIPString(id)
+end
+local function homeIpText()
+    local ok,addr=pcall(ipStringFor,panel.localPlayer)
+    if not ok or type(addr)~="string" then return "Offline" end
+    local short=addr:match("^%s*([^%(]+)") or ""
+    short=short:gsub("%s+$","")
+    return short~="" and short or "Offline"
+end
+local function homeHostText()
+    if not NETWORK.NETWORK_IS_IN_SESSION() then return "Offline" end
+    if NETWORK.NETWORK_IS_HOST() then return "You" end
+    local idx=NETWORK.NETWORK_GET_HOST_PLAYER_INDEX()
+    local name=panel.names[idx]
+    if name then return name end
+    return "Player "..tostring(idx)
+end
+local function renderHome(node)
+    uiTitle("WELCOME BACK")
+    local count=0;for _,active in pairs(panel.active)do if active then count=count+1 end end
+    local localId=panel.localPlayer
+    local localName=panel.names[localId] or "Player"
+    ImGui.TextDisabled("MeloCatScr workspace  /  "..count.." players in session")
+    if ImGui.BeginTable("MeloHomeStatus",3,0)then
+        local cells={{"OPERATOR",localName},{"SESSION",count.." players"},{"BUILD","MeloCatScr 1.1.0"},
+            {"IP",homeIpText()},{"SERVER",homeSessionTypeText()},{"HOST",homeHostText()}}
+        panel.homeHover=panel.homeHover or {}
+        panel.homeGlow=panel.homeGlow or {}
+        local accent=uiAccent()
+        local homeDt=uiDt("homecards")
+        local contrast=(uiPrefs.panelContrast or 100)/100
+        local opacity=(uiPrefs.panelOpacity or 98)/100
+        for i,cell in ipairs(cells)do
+            if (i-1)%3==0 then ImGui.TableNextRow() end
+            ImGui.TableSetColumnIndex((i-1)%3)
+            local hov=panel.homeHover[i]
+            panel.homeGlow[i]=uiLerp(panel.homeGlow[i] or 0,hov and 1 or 0,homeDt,uiSpeed(10))
+            local glow=panel.homeGlow[i]
+            local npush=0
+            if ImGui.PushStyleColor and ImGuiCol then
+                if ImGuiCol.ChildBg then
+                    local lift=0.016*glow
+                    ImGui.PushStyleColor(ImGuiCol.ChildBg,math.min(1,(0.106+lift)*contrast),math.min(1,(0.114+lift)*contrast),math.min(1,(0.149+lift*1.4)*contrast),opacity)
+                    npush=npush+1
+                end
+                if ImGuiCol.Border then
+                    ImGui.PushStyleColor(ImGuiCol.Border,accent[1]*0.50,accent[2]*0.45,accent[3]*0.60,uiGlowAlpha(0.85+0.55*glow))
+                    npush=npush+1
+                end
+            end
+            local visible=ImGui.BeginChild("HomeStatus"..i,0,uiCardHeight(72),true,0)
+            if visible then
+                uiFontScale()
+                panel.homeHover[i]=ImGui.IsWindowHovered and ImGui.IsWindowHovered(0) or false
+                ImGui.TextDisabled(cell[1])
+                local lx,ly=ImGui.GetItemRectMin()
+                local rx,ry=ImGui.GetItemRectMax()
+                if ImGui.AddRectFilled then
+                    ImGui.AddRectFilled(lx,ry+3,lx+26,ry+5,
+                        math.floor(accent[1]*255+0.5),math.floor(accent[2]*255+0.5),math.floor(accent[3]*255+0.5),
+                        math.floor(uiGlowAlpha(0.7+0.3*glow)*255+0.5),2)
+                end
+                ImGui.Spacing()
+                uiHeading(cell[2])
+            end
+            ImGui.EndChild()
+            if npush>0 then ImGui.PopStyleColor(npush) end
+        end
+        ImGui.EndTable()
+    end
+    ImGui.Spacing()
+    uiSection("QUICK ACTIONS","Jump straight into the areas you use the most.")
+    local links={
+        {"Weapon Center","weapons"},{"Players","players"},
+        {"Vehicles","vehicles"},{"World","world"},
+        {"Online","online"},{"Settings","settings"},
+    }
+    local half=math.max(90,math.floor(((ImGui.GetContentRegionAvail() or 300)-14)/2))
+    for i,link in ipairs(links)do
+        if i%2==1 then
+            if accentButton(link[1],"home"..i,half)then openRoute(link[2])end
+        else
+            ImGui.SameLine()
+            if accentButton(link[1],"home"..i,half)then openRoute(link[2])end
+        end
+    end
+    ImGui.Spacing()
+    local homeGroupFlags=uiPrefs.groups==1 and (ImGuiTreeNodeFlags and ImGuiTreeNodeFlags.DefaultOpen or 32) or 0
+    if ImGui.CollapsingHeader("Favorites##home-fav-"..uiGroupRevision,homeGroupFlags)then renderLibrary("favorites")end
+    if ImGui.CollapsingHeader("Recently used##home-recent-"..uiGroupRevision,homeGroupFlags)then renderLibrary("recent")end
+    if node then renderControlGroups(node,"home")end
+end
+local function filterChips(items,current,id)
+    local columns=math.max(1,math.min(5,math.floor(ImGui.GetContentRegionAvail()/110)))
+    if ImGui.BeginTable("Filters##"..id,columns,0) then
+        panel.chipAnim=panel.chipAnim or {}
+        local dt=uiDt("chips"..id)
+        local accent=uiAccent()
+        local hoverLift=(uiPrefs.hoverBoost or 50)/200
+        local headerPush=0
+        if ImGui.PushStyleColor and ImGuiCol then
+            if ImGuiCol.Header then ImGui.PushStyleColor(ImGuiCol.Header,accent[1]*0.40,accent[2]*0.35,accent[3]*0.56,1);headerPush=headerPush+1 end
+            if ImGuiCol.HeaderHovered then ImGui.PushStyleColor(ImGuiCol.HeaderHovered,accent[1]*(0.34+hoverLift),accent[2]*(0.29+hoverLift),accent[3]*(0.50+hoverLift),1);headerPush=headerPush+1 end
+            if ImGuiCol.HeaderActive then ImGui.PushStyleColor(ImGuiCol.HeaderActive,accent[1]*0.54,accent[2]*0.48,accent[3]*0.70,1);headerPush=headerPush+1 end
+        end
+        for i,value in ipairs(items)do
+            if (i-1)%columns==0 then ImGui.TableNextRow() end
+            ImGui.TableSetColumnIndex((i-1)%columns)
+            local sel=current==value
+            if ImGui.Selectable(value.."##"..id..i,sel,0,0,26)then current=value end
+            local key=id..i
+            panel.chipAnim[key]=uiLerp(panel.chipAnim[key] or 0,sel and 1 or 0,dt,uiSpeed(12))
+            local a=panel.chipAnim[key]
+            if a>0.02 then
+                local hov=(ImGui.IsItemHovered and ImGui.IsItemHovered(0))and 1 or 0
+                uiOutline(uiGlowAlpha(0.62+0.3*hov)*a,6)
+            end
+        end
+        if headerPush>0 then ImGui.PopStyleColor(headerPush) end
+        ImGui.EndTable()
+    end
+    return current
+end
+local function renderWeaponCard(entry)
+    local cardPush=pushCardBg()
+    local visible=ImGui.BeginChild("WeaponCard"..entry.key,0,uiCardHeight(224),true,0)
+    if visible then
+        uiFontScale()
+        local meta=entry.parts and (entry.parts>0 and (entry.parts.." attachments") or "standard build") or "special mode"
+        ImGui.TextDisabled(entry.family:upper().."  /  "..meta)
+        uiHeading(entry.label)
+        local stats=statsFor(entry.key,entry.family)
+        statBar("Damage",stats[1],"wdmg"..entry.key)
+        statBar("Range",stats[2],"wrng"..entry.key)
+        statBar("Fire Rate",stats[4],"wrate"..entry.key)
+        local half=math.max(70,math.floor(((ImGui.GetContentRegionAvail() or 200)-14)/2))
+        local compactH=(uiPrefs.btnH or 28)-2
+        if ImGui.Button("Details##weapon"..entry.key,half,compactH)then
+            if entry.ref then panel.weaponSpecial=entry.ref.id
+            else panel.weaponSpecial=nil;panel.weaponSelected=entry.index end
+        end
+        ImGui.SameLine()
+        if entry.ref then
+            local saved=panel.favorites[entry.ref.id]
+            if ImGui.Button((saved and "Saved" or "+ Favorite").."##wcfav"..entry.key,half,compactH)then
+                panel.favorites[entry.ref.id]=not saved or nil;saveLibrary()
+            end
+        elseif accentButton("Equip","wcequip"..entry.key,half)then
+            queueWeapon("equip",entry.index)
+        end
+    end
+    ImGui.EndChild()
+    if cardPush>0 then ImGui.PopStyleColor(cardPush) end
+end
+local function renderWeaponDetails(service,specialRefs)
+    if panel.weaponSpecial then
+        for _,ref in ipairs(specialRefs)do
+            if ref.id==panel.weaponSpecial then
+                ImGui.Separator()
+                uiSection("SELECTED FIRING EFFECT","This is a firing effect, configured through its original control.")
+                featureCard(ref,"catalog-details")
+                return
+            end
+        end
+        panel.weaponSpecial=nil
+    end
+    local index=panel.weaponSelected or 1
+    local w=service.catalog[index]
+    if not w then return end
+    ImGui.Separator()
+    local cardPush=pushCardBg()
+    local visible=ImGui.BeginChild("WeaponDetails##",0,uiCardHeight(320),true,0)
+    if visible then
+        uiFontScale()
+        uiHeading(w.label.."  /  DETAILS")
+        ImGui.TextDisabled(w.family)
+        local stats=statsFor(w.hash,w.family)
+        local bh=uiPrefs.btnH or 28
+        if ImGui.BeginTable("WeaponDetailStats",2,0)then
+            ImGui.TableNextRow()
+            ImGui.TableSetColumnIndex(0)
+            for i,name in ipairs(statNames)do statBar(name,stats[i],"detstat"..i)end
+            ImGui.TableSetColumnIndex(1)
+            if accentButton("EQUIP","det-equip",0)then queueWeapon("equip",index)end
+            ImGui.Spacing()
+            if ImGui.Button("OPEN 3D WORKBENCH##det-preview",0,bh)then queueWeapon("preview",index)end
+            ImGui.Spacing()
+            local saved=panel.weaponFavorites[w.hash]
+            if ImGui.Button((saved and "REMOVE FAVORITE" or "ADD FAVORITE").."##det-fav",0,bh)then
+                panel.weaponFavorites[w.hash]=not saved or nil;saveLibrary()
+            end
+            ImGui.Spacing()
+            if ImGui.Button("OPEN LOADOUT PAGE##det-loadout",0,bh)then
+                queueWeapon("select",index);panel["view:MeloCatScr/Workspace/weapons"]=2
+            end
+            ImGui.EndTable()
+        end
+        panel.weaponRole=panel.weaponRole or "Primary"
+        panel.weaponRole=filterChips({"Primary","Secondary","Special","Melee"},panel.weaponRole,"detrole")
+        if accentButton("ADD TO LOADOUT: "..panel.weaponRole:upper(),"det-assign",0)then
+            service.assign(panel.weaponRole,index)
+            toast("Weapon assigned to "..panel.weaponRole..".")
+        end
+    end
+    ImGui.EndChild()
+    if cardPush>0 then ImGui.PopStyleColor(cardPush) end
+end
+local function renderWeaponCenter()
+    local service=context:read("equipment/weapon_workbench","weaponCenter")
+    uiSection("WEAPON CENTER","Search the arsenal, filter by class, inspect a weapon and add it to your loadout.")
+    local weaponSearchW=math.max(200,math.min(360,math.floor((ImGui.GetContentRegionAvail() or 400)*0.65)))
+    ImGui.PushItemWidth(weaponSearchW)
+    panel.weaponSearch=(ImGui.InputText("Search weapons, lasers, launchers...##weaponSearch",panel.weaponSearch or "",0) or ""):sub(1,80)
+    ImGui.PopItemWidth()
+    panel.weaponFocus=uiLerp(panel.weaponFocus or 0,(ImGui.IsItemActive and ImGui.IsItemActive())and 1 or 0,
+        uiDt("weaponfocus"),uiSpeed(12))
+    uiFieldOutline(uiGlowAlpha(0.85)*math.max(panel.weaponFocus,(ImGui.IsItemHovered and ImGui.IsItemHovered(0))and 0.35 or 0),6,weaponSearchW)
+    panel.weaponFamily=panel.weaponFamily or "All"
+    local families={"All","Handgun","SMG","Rifle","Shotgun","Sniper","Heavy","Special","Melee","Throwable","Utility","Laser","Launchers","Explosive","Gesture","Experimental","Favorites"}
+    panel.weaponFamily=filterChips(families,panel.weaponFamily,"weapons")
+    panel.weaponFavorites=panel.weaponFavorites or {}
+    local entries,specialRefs=weaponEntries(service)
+    local results={}
+    local query=panel.weaponSearch:lower()
+    for _,entry in ipairs(entries)do
+        local saved=entry.ref and panel.favorites[entry.ref.id] or panel.weaponFavorites[entry.key]
+        if (panel.weaponFamily=="All" or entry.family==panel.weaponFamily or (panel.weaponFamily=="Favorites" and saved))
+            and (query=="" or entry.label:lower():find(query,1,true) or (entry.ref and entry.ref.name:lower():find(query,1,true)))then results[#results+1]=entry end
+    end
+    if query~="" then
+        local sug={}
+        for _,entry in ipairs(results) do
+            if entry.label:lower()~=query and #sug<6 then sug[#sug+1]={label=entry.label} end
+        end
+        suggestionStrip(sug,function(item) panel.weaponSearch=item.label end,"weapons")
+    end
+    local filterKey=panel.weaponFamily..":"..query
+    if panel.weaponFilterKey~=filterKey then panel.weaponPage=1;panel.weaponFilterKey=filterKey end
+    local pages=math.max(1,math.ceil(#results/9));panel.weaponPage=math.min(panel.weaponPage or 1,pages)
+    local columns=math.max(1,math.min(3,math.floor((ImGui.GetContentRegionAvail() or 600)/230)))
+    if ImGui.BeginTable("WeaponCards",columns,0)then
+        for n=(panel.weaponPage-1)*9+1,math.min(#results,panel.weaponPage*9)do
+            local entry=results[n]
+            if (n-1)%columns==0 then ImGui.TableNextRow()end
+            ImGui.TableSetColumnIndex((n-1)%columns)
+            renderWeaponCard(entry)
+        end
+        ImGui.EndTable()
+    end
+    if #results==0 then ImGui.TextDisabled("No weapons match these filters.")end
+    ImGui.TextDisabled(#results.." weapons / page "..panel.weaponPage.." of "..pages)
+    if panel.weaponPage>1 and ImGui.Button("Previous##weapons")then panel.weaponPage=panel.weaponPage-1 end
+    ImGui.SameLine()
+    if panel.weaponPage<pages and ImGui.Button("Next##weapons")then panel.weaponPage=panel.weaponPage+1 end
+    renderWeaponDetails(service,specialRefs)
+end
+
+local function renderLoadouts()
+    local service=context:read("equipment/weapon_workbench","weaponCenter")
+    panel.loadoutSlot=panel.loadoutSlot or 1
+    uiSection("LOADOUTS","Assign roles, tune attachments and save five configurations.")
+    local avail=ImGui.GetContentRegionAvail() or 600
+    local roleColumns=math.max(1,math.min(4,math.floor(avail/200)))
+    if ImGui.BeginTable("LoadoutRoles",roleColumns,0)then
+        local roles={"Primary","Secondary","Special","Melee"}
+        for i,role in ipairs(roles)do
+            if (i-1)%roleColumns==0 then ImGui.TableNextRow()end
+            ImGui.TableSetColumnIndex((i-1)%roleColumns)
+            local hash=(service.state.roles or {})[role];local label="Empty"
+            for _,w in ipairs(service.catalog)do if w.hash==hash then label=w.label;break end end
+            local cardPush=pushCardBg()
+            local visible=ImGui.BeginChild("LoadoutRole"..role,0,uiCardHeight(128),true,0)
+            if visible then
+                uiFontScale()
+                ImGui.TextDisabled("ROLE")
+                uiHeading(role)
+                ImGui.TextDisabled(label)
+                local compactH=(uiPrefs.btnH or 28)-2
+                local half=math.max(70,math.floor(((ImGui.GetContentRegionAvail() or 160)-14)/2))
+                if ImGui.Button("Assign selected##"..role,half,compactH)then service.assign(role,panel.weaponSelected or service.state.selected)end
+                ImGui.SameLine()
+                if hash and ImGui.Button("Clear##"..role,half,compactH)then service.assign(role,nil)end
+            end
+            ImGui.EndChild()
+            if cardPush>0 then ImGui.PopStyleColor(cardPush) end
+        end
+        ImGui.EndTable()
+    end
+    ImGui.Spacing()
+    uiSection("SAVED LOADOUTS","Select a slot, then save, load, duplicate or delete it.")
+    local slotColumns=math.max(1,math.min(5,math.floor((ImGui.GetContentRegionAvail() or 700)/170)))
+    if ImGui.BeginTable("LoadoutSlots",slotColumns,0)then
+        for slot=1,5 do
+            if (slot-1)%slotColumns==0 then ImGui.TableNextRow()end
+            ImGui.TableSetColumnIndex((slot-1)%slotColumns)
+            local selected=panel.loadoutSlot==slot
+            local slotPush=pushCardBg()
+            local borderPush=0
+            if selected and ImGui.PushStyleColor and ImGuiCol and ImGuiCol.Border then
+                local c=uiAccent()
+                ImGui.PushStyleColor(ImGuiCol.Border,c[1],c[2],c[3],uiGlowAlpha(0.95))
+                borderPush=1
+            end
+            local visible=ImGui.BeginChild("LoadoutSlot"..slot,0,uiCardHeight(104),true,0)
+            if visible then
+                uiFontScale()
+                uiHeading(string.format("SLOT %02d",slot))
+                ImGui.TextDisabled(service.state.names[slot] or "Unnamed configuration")
+                if ImGui.Selectable((selected and "Selected" or "Select").."##slotselect"..slot,selected,0,0,26)then
+                    panel.loadoutSlot=slot;panel.loadoutConfirm=nil
+                end
+            end
+            ImGui.EndChild()
+            if borderPush>0 then ImGui.PopStyleColor(borderPush) end
+            if slotPush>0 then ImGui.PopStyleColor(slotPush) end
+        end
+        ImGui.EndTable()
+    end
+    local actionsPush=pushCardBg()
+    local visible=ImGui.BeginChild("LoadoutActions##",0,uiCardHeight(192),true,0)
+    if visible then
+        uiFontScale()
+        local bh=uiPrefs.btnH or 28
+        local nameW=math.max(180,math.min(320,math.floor((ImGui.GetContentRegionAvail() or 400)*0.6)))
+        ImGui.PushItemWidth(nameW)
+        panel.loadoutName=ImGui.InputText("Configuration name##loadout",panel.loadoutName or "",0) or ""
+        ImGui.PopItemWidth()
+        panel.loadoutFocus=uiLerp(panel.loadoutFocus or 0,(ImGui.IsItemActive and ImGui.IsItemActive())and 1 or 0,
+            uiDt("loadoutfocus"),uiSpeed(12))
+        uiFieldOutline(uiGlowAlpha(0.85)*math.max(panel.loadoutFocus,(ImGui.IsItemHovered and ImGui.IsItemHovered(0))and 0.35 or 0),6,nameW)
+        local third=math.max(80,math.floor(((ImGui.GetContentRegionAvail() or 400)-24)/3))
+        if accentButton("SAVE","lo-save",third)then queueWeapon("save",nil,panel.loadoutSlot,panel.loadoutName~="" and panel.loadoutName or nil)end
+        ImGui.SameLine()
+        if accentButton("LOAD","lo-load",third)then queueWeapon("load",nil,panel.loadoutSlot)end
+        ImGui.SameLine()
+        if ImGui.Button("DELETE##lo-del",third,bh)then panel.loadoutConfirm={action="delete",slot=panel.loadoutSlot}end
+        panel.copySlot=panel.copySlot or 1
+        if ImGui.Button("Copy destination: "..panel.copySlot.."##lo-copy",third,bh)then panel.copySlot=panel.copySlot%5+1 end
+        ImGui.SameLine()
+        if ImGui.Button("DUPLICATE##lo-dup",third,bh)and panel.copySlot~=panel.loadoutSlot then panel.loadoutConfirm={action="duplicate",slot=panel.loadoutSlot,target=panel.copySlot}end
+        if panel.loadoutConfirm then
+            local request=panel.loadoutConfirm
+            ImGui.TextWrapped(request.action=="delete" and ("Delete saved loadout "..request.slot.."?")or("Copy loadout "..request.slot.." and replace loadout "..request.target.."?"))
+            if ImGui.Button("Confirm##lo-ok",0,bh-2)then
+                local action,slot,target=request.action,request.slot,request.target
+                context:read("application/task_dispatcher","enqueue")(function()service.manageSlot(action,slot,target)end)
+                panel.loadoutConfirm=nil
+            end
+            ImGui.SameLine()
+            if ImGui.Button("Cancel##lo-cancel",0,bh-2)then panel.loadoutConfirm=nil end
+        end
+    end
+    ImGui.EndChild()
+    if actionsPush>0 then ImGui.PopStyleColor(actionsPush) end
+end
+local function renderSpecial(node,id)
+    local specialW=math.max(180,math.min(320,math.floor((ImGui.GetContentRegionAvail() or 300)*0.6)))
+    ImGui.PushItemWidth(specialW)
+    panel.specialSearch=ImGui.InputText("Search laser, launcher, rail...##special",panel.specialSearch or "",0) or ""
+    ImGui.PopItemWidth()
+    panel.specialFocus=uiLerp(panel.specialFocus or 0,(ImGui.IsItemActive and ImGui.IsItemActive())and 1 or 0,
+        uiDt("specialfocus"),uiSpeed(12))
+    uiFieldOutline(uiGlowAlpha(0.85)*math.max(panel.specialFocus,(ImGui.IsItemHovered and ImGui.IsItemHovered(0))and 0.35 or 0),6,specialW)
+    panel.specialFamily=panel.specialFamily or "All"
+    panel.specialFamily=filterChips({"All","Laser","Launchers","Explosive","Experimental"},panel.specialFamily,"special")
+    local refs={};gatherControls(node,refs)
+    local matches={}
+    for _,ref in ipairs(refs) do
+        local name=I18N.text(ref.name):lower();local raw=ref.name:lower()
+        local family=(raw:find("laser") and "Laser") or ((raw:find("launcher") or raw:find("rpg")) and "Launchers") or ((raw:find("explos") or raw:find("firework")) and "Explosive") or "Experimental"
+        if (panel.specialFamily=="All" or panel.specialFamily==family) and (panel.specialSearch=="" or name:find(panel.specialSearch:lower(),1,true) or raw:find(panel.specialSearch:lower(),1,true)) then matches[#matches+1]={ref=ref,family=family} end
+    end
+    if panel.specialSearch~="" then
+        local sug={}
+        for _,item in ipairs(matches) do
+            local name=I18N.text(item.ref.name)
+            if name:lower()~=panel.specialSearch:lower() and #sug<6 then sug[#sug+1]={label=name} end
+        end
+        suggestionStrip(sug,function(s) panel.specialSearch=s.label end,"special")
+    end
+    local count=math.max(1,math.ceil(#matches/9));panel.specialPage=math.min(panel.specialPage or 1,count)
+    if panel.specialPage>1 and ImGui.Button("Previous##special")then panel.specialPage=panel.specialPage-1 end
+    if panel.specialPage<count and ImGui.Button("Next##special")then panel.specialPage=panel.specialPage+1 end
+    local columns=math.max(1,math.min(3,math.floor(ImGui.GetContentRegionAvail()/210)))
+    if ImGui.BeginTable("SpecialWeaponCards",columns,0)then
+        for i=(panel.specialPage-1)*9+1,math.min(#matches,panel.specialPage*9) do
+            if (i-1)%columns==0 then ImGui.TableNextRow()end
+            ImGui.TableSetColumnIndex((i-1)%columns)
+            local item=matches[i];local ref=item.ref
+            local cardPush=pushCardBg()
+            local visible=ImGui.BeginChild("SpecialCard"..ref.id,0,uiCardHeight(122),true,0)
+            if visible then
+                uiFontScale()
+                ImGui.TextDisabled(item.family);uiHeading(ref.name)
+                if ImGui.Button("Inspect##special"..ref.id)then panel.specialSelected=ref.id end
+            end
+            ImGui.EndChild()
+            if cardPush>0 then ImGui.PopStyleColor(cardPush) end
+        end
+        ImGui.EndTable()
+    end
+    if #matches==0 then ImGui.TextDisabled("No matching effects.") end
+    for _,ref in ipairs(refs) do if ref.id==panel.specialSelected then featureCard(ref,"special-details");break end end
+end
+-- Shared page filter: home, generic pages and player feature groups consume it.
+local function pageFilterInput(node)
+    if uiPrefs.search==0 then return end
+    local filterW=math.max(160,math.min(320,math.floor((ImGui.GetContentRegionAvail() or 200)*0.7)))
+    ImGui.PushItemWidth(filterW)
+    panel.filter=(ImGui.InputText("Filter this page##pageSearch",panel.filter or "",0) or ""):sub(1,80)
+    ImGui.PopItemWidth()
+    panel.filterFocus=uiLerp(panel.filterFocus or 0,(ImGui.IsItemActive and ImGui.IsItemActive())and 1 or 0,
+        uiDt("filterfocus"),uiSpeed(12))
+    uiFieldOutline(uiGlowAlpha(0.85)*math.max(panel.filterFocus,(ImGui.IsItemHovered and ImGui.IsItemHovered(0))and 0.35 or 0),6,filterW)
+    local filterQuery=(panel.filter or ""):lower()
+    if node and filterQuery~="" then
+        local all={}
+        gatherControls(node,all)
+        local sug={}
+        for _,ref in ipairs(all) do
+            local name=I18N.text(ref.name)
+            if name:lower():find(filterQuery,1,true) and name:lower()~=filterQuery and #sug<6 then sug[#sug+1]={label=name} end
+        end
+        suggestionStrip(sug,function(item) panel.filter=item.label end,"filter")
+    end
+end
+local function renderContentBody(route,stateKey,id)
+    local pageIndex=panel["view:"..route.path] or 0
+    if route.viewTabs then
+        pageIndex=math.max(0,math.min(pageIndex,#route.viewTabs-1))
+        panel["view:"..route.path]=pageIndex
+    end
+    local page=route.viewTabs and route.viewTabs[pageIndex+1]
+    ImGui.TextDisabled("MELOCAT / "..string.upper(route.name)..(page and (" / "..string.upper(page.name)) or ""))
+    uiTitle(page and page.name or route.name)
+    if uiPrefs.hints~=0 and route.subtitle then ImGui.TextDisabled(route.subtitle) end
+    if panel.globalSearch~="" then renderLibrary("search");return end
+    if panel.library then renderLibrary(panel.library);return end
+    if route.isPlayersCategory then renderPlayersPanel(id);return end
+    if route.viewTabs and #route.viewTabs>1 then
+        local names={}
+        for _,entry in ipairs(route.viewTabs)do names[#names+1]=entry.name end
+        local chosen=filterChips(names,names[pageIndex+1],"pages"..id)
+        for i,name in ipairs(names)do
+            if name==chosen and panel["view:"..route.path]~=i-1 then
+                panel["view:"..route.path]=i-1;pageIndex=i-1;page=route.viewTabs[i]
+            end
+        end
+        ImGui.Spacing()
+    end
+    if not page then return end
+    -- Weapon pages own their search; every other page gets the shared filter.
+    if route.routeId~="weapons" then pageFilterInput(page.node) end
+    if route.routeId=="home" then renderHome(page.node);return end
+    if route.routeId=="weapons" then
+        if page.name=="Weapon Center" then renderWeaponCenter();return end
+        if page.name=="Loadouts" then renderLoadouts();return end
+        if page.name=="Special Gear" then renderSpecial(page.node,id);return end
+    end
+    renderControlGroups(page.node,id.."/"..page.node.path)
+end
+local function renderContent(route,stateKey,id)
+    local pageIndex=panel["view:"..route.path] or 0
+    local fadeKey=route.path..":"..tostring(pageIndex)
+    if panel.fadeKey~=fadeKey then panel.fadeKey=fadeKey;panel.fade=0 end
+    panel.fade=math.min(1,(panel.fade==nil and 1 or panel.fade)+uiDt("content")*uiSpeed(7))
+    local alpha=0.88+0.12*panel.fade
+    local pushed=false
+    if alpha<0.999 and ImGui.PushStyleVar and ImGui.PopStyleVar and ImGuiStyleVar and ImGuiStyleVar.Alpha~=nil then
+        ImGui.PushStyleVar(ImGuiStyleVar.Alpha,alpha);pushed=true
+    end
+    renderContentBody(route,stateKey,id)
+    if pushed then ImGui.PopStyleVar(1) end
+end
+renderPlayersPanel=function(id)
+    uiFontScale()
+    local searchW=math.max(150,math.min(300,math.floor((ImGui.GetContentRegionAvail() or 200)*0.6)))
+    ImGui.PushItemWidth(searchW)
+    panel.search=ImGui.InputText("Find player##"..id,panel.search or "",0) or panel.search
+    ImGui.PopItemWidth()
+    panel.playerFocus=uiLerp(panel.playerFocus or 0,(ImGui.IsItemActive and ImGui.IsItemActive())and 1 or 0,
+        uiDt("playerfocus"),uiSpeed(12))
+    uiFieldOutline(uiGlowAlpha(0.85)*math.max(panel.playerFocus,(ImGui.IsItemHovered and ImGui.IsItemHovered(0))and 0.35 or 0),6,searchW)
+    local accent=uiAccent()
+    local needle=(panel.search or ""):lower()
+    local matched=0
+    local sugPlayers={}
+    for pid=0,31 do
+        local name=panel.names[pid] or ("Player "..pid)
+        if panel.active[pid] and name:lower():find(needle,1,true) then
+            matched=matched+1
+            if needle~="" and #sugPlayers<6 then sugPlayers[#sugPlayers+1]={label=name.." ["..pid.."]",name=name,pid=pid} end
+        end
+    end
+    suggestionStrip(sugPlayers,function(item)
+        panel.search=item.name
+        panel.selectedPlayer=item.pid
+    end,"players")
+    local width=ImGui.GetContentRegionAvail()
+    local sideBySide=width>=520
+    local scrollFlags=0
+    if ImGuiWindowFlags and ImGuiWindowFlags.AlwaysVerticalScrollbar then
+        scrollFlags=ImGuiWindowFlags.AlwaysVerticalScrollbar
+    end
+    local side=math.max(120,math.min(uiPrefs.playerWidth or 170,math.floor(width*0.45)))
+    -- Roster height tracks the filtered rows; the outer child scrolls everything.
+    local rosterH=math.max(56,matched*(28+(uiPrefs.gapY or 9))+24)
+    local outerVisible=ImGui.BeginChild("PlayersScroll##"..id,0,0,true,scrollFlags)
+    if outerVisible then
+        uiFontScale()
+        local rosterBorder=0
+        if ImGui.PushStyleColor and ImGuiCol and ImGuiCol.Border then
+            local bc=uiAccent()
+            ImGui.PushStyleColor(ImGuiCol.Border,bc[1]*0.55,bc[2]*0.50,bc[3]*0.66,uiGlowAlpha(0.95))
+            rosterBorder=1
+        end
+        local rosterPush=pushCardBg()+rosterBorder
+        local rosterVisible=ImGui.BeginChild("PlayerRoster##"..id,sideBySide and side or 0,rosterH,true,scrollFlags)
+        if rosterVisible then
+            uiFontScale()
+            local dt=uiDt("roster"..id)
+            panel.rosterBar=panel.rosterBar or {}
+            for pid=0,31 do
+                local name=panel.names[pid] or ("Player "..pid)
+                if panel.active[pid] and name:lower():find(needle,1,true) then
+                    local label=(uiPrefs.playerNames==1 and name or "Player")..(uiPrefs.playerIds==1 and (" ["..pid.."]") or "")
+                    local sel=panel.selectedPlayer==pid
+                    local headerPush=0
+                    if ImGui.PushStyleColor and ImGuiCol then
+                        if ImGuiCol.Header then ImGui.PushStyleColor(ImGuiCol.Header,accent[1]*0.38,accent[2]*0.33,accent[3]*0.54,1);headerPush=headerPush+1 end
+                        if ImGuiCol.HeaderHovered then ImGui.PushStyleColor(ImGuiCol.HeaderHovered,accent[1]*0.30,accent[2]*0.26,accent[3]*0.46,1);headerPush=headerPush+1 end
+                        if ImGuiCol.HeaderActive then ImGui.PushStyleColor(ImGuiCol.HeaderActive,accent[1]*0.50,accent[2]*0.44,accent[3]*0.66,1);headerPush=headerPush+1 end
+                    end
+                    if I18N.rawImGui.Selectable(label.."##person"..id..pid,sel,0,0,28)then panel.selectedPlayer=pid end
+                    if headerPush>0 then ImGui.PopStyleColor(headerPush) end
+                    panel.rosterBar[pid]=uiLerp(panel.rosterBar[pid] or 0,sel and 1 or 0,dt,uiSpeed(11))
+                    local bar=panel.rosterBar[pid]
+                    if bar>0.02 and iconsOk and ImGui.AddRectFilled then
+                        local minX,minY=ImGui.GetItemRectMin()
+                        local maxX,maxY=ImGui.GetItemRectMax()
+                        local grow=(1-bar)*7
+                        ImGui.AddRectFilled(minX,minY+4+grow,minX+3,maxY-4-grow,
+                            math.floor(accent[1]*255+0.5),math.floor(accent[2]*255+0.5),math.floor(accent[3]*255+0.5),
+                            math.floor(bar*uiGlowAlpha(1.2)*255+0.5),2)
+                    end
+                end
+            end
+        end
+        ImGui.EndChild()
+        if rosterPush>0 then ImGui.PopStyleColor(rosterPush) end
+        if sideBySide then ImGui.SameLine() end
+        -- Body renders directly (no inner scroll child) so the outer child
+        -- owns scrolling for roster and features together.
+        local node=playerRoots[panel.selectedPlayer]
+        if not node or not panel.active[panel.selectedPlayer] then
+            ImGui.TextDisabled("Choose a connected player.")
+        else
+            uiHeading(panel.names[panel.selectedPlayer] or "Player")
+            local badge="ID  "..panel.selectedPlayer
+            if iconsOk and ImGui.AddRectFilled and ImGui.CalcTextSize and ImGui.GetCursorScreenPos then
+                local bx,by=ImGui.GetCursorScreenPos()
+                local tw=ImGui.CalcTextSize(badge)
+                ImGui.AddRectFilled(bx-5,by-3,bx+tw+7,by+17,
+                    math.floor(accent[1]*255+0.5),math.floor(accent[2]*255+0.5),math.floor(accent[3]*255+0.5),
+                    math.floor(uiGlowAlpha(0.40)*255+0.5),5)
+            end
+            ImGui.TextDisabled(badge)
+            ImGui.SameLine()
+            ImGui.TextDisabled("/ connected")
+            local categories=node.navigation or {};panel.playerTab=math.min(panel.playerTab,#categories-1)
+            local names={};for _,ref in ipairs(categories)do names[#names+1]=ref.child.name end
+            local choice=filterChips(names,names[panel.playerTab+1],"player-pages"..id)
+            for index,name in ipairs(names)do if name==choice then panel.playerTab=index-1 end end
+            local selected=categories[panel.playerTab+1]
+            if selected then
+                ImGui.Separator();                uiHeading(selected.child.name)
+                pageFilterInput(selected.child)
+                renderControlGroups(selected.child,id..selected.child.path)
+            end
+        end
+    end
+    ImGui.EndChild()
+end
+local function renderHeader(id)
+    local width=ImGui.GetContentRegionAvail()
+    if iconsOk and ImGui.AddRectFilled and ImGui.GetCursorScreenPos then
+        local ax,ay=ImGui.GetCursorScreenPos()
+        local c=uiAccent()
+        local headerH=uiHeaderHeight()
+        ImGui.AddRectFilled(ax-14,ay+headerH-14,ax+width+14,ay+headerH-13,
+            math.floor(c[1]*255+0.5),math.floor(c[2]*255+0.5),math.floor(c[3]*255+0.5),
+            math.floor(uiGlowAlpha(0.55)*255+0.5),1)
+    end
+    uiFontScale(1.18)
+    uiHeading("MELOCAT")
+    uiFontScale()
+    if width>=620 then ImGui.SameLine(); ImGui.TextDisabled("CHERAX LUA SUITE") end
+    ImGui.SameLine()
+    local fieldW=math.max(140,math.min(240,math.floor(width*0.30)))
+    ImGui.PushItemWidth(fieldW)
+    local accent=uiAccent()
+    local framePush=0
+    if ImGui.PushStyleColor and ImGuiCol then
+        if ImGuiCol.FrameBgHovered then
+            ImGui.PushStyleColor(ImGuiCol.FrameBgHovered,0.15,0.13,0.21,1);framePush=framePush+1
+        end
+        if ImGuiCol.FrameBgActive then
+            ImGui.PushStyleColor(ImGuiCol.FrameBgActive,accent[1]*0.44,accent[2]*0.38,accent[3]*0.56,1);framePush=framePush+1
+        end
+    end
+    panel.globalSearch=(ImGui.InputText("##global",panel.globalSearch or "",0) or ""):sub(1,80)
+    if framePush>0 then ImGui.PopStyleColor(framePush) end
+    ImGui.PopItemWidth()
+    if (panel.globalSearch or "")=="" then
+        local ix,iy=ImGui.GetItemRectMin()
+        uiMagnifier(ix+11,iy+13,4)
+        uiInputHint(ix+26,iy+6,"Search...")
+    end
+    panel.searchFocus=uiLerp(panel.searchFocus or 0,(ImGui.IsItemActive and ImGui.IsItemActive())and 1 or 0,
+        uiDt("searchfocus"),uiSpeed(12))
+    uiFieldOutline(uiGlowAlpha(0.85)*math.max(panel.searchFocus,(ImGui.IsItemHovered and ImGui.IsItemHovered(0))and 0.35 or 0),6,fieldW)
+    ImGui.SameLine()
+    local bh=uiPrefs.btnH or 28
+    if ImGui.Button((panel.library=="favorites" and "Favorites *" or "Favorites").."##hdr-favorites",0,bh)then
+        panel.library=panel.library=="favorites" and nil or "favorites";panel.globalSearch=""
+    end
+    uiButtonOutline()
+    ImGui.SameLine()
+    if ImGui.Button("Home##hdr-home",0,bh)then panel.library=nil;openRoute("home")end
+    uiButtonOutline()
+    ImGui.SameLine()
+    if ImGui.Button("Settings##hdr-settings",0,bh)then panel.library=nil;openRoute("settings")end
+    uiButtonOutline()
+end
+local function renderSidebar(node,stateKey,id,collapsed,rail)
+    local dt=uiDt("icons")
+    local bw=math.max(28,(rail or 60)-28)
+    if ImGui.Button((collapsed and ">>" or "<<").."##sidebar-toggle",bw,0)then panel.collapsed=not panel.collapsed end
+    uiTip(collapsed and "Expand sidebar" or "Collapse sidebar",true)
+    ImGui.Spacing()
+    local accent=uiAccent()
+    local headerPush=0
+    -- Selectable paints a square background on Header/Hover/Active; zero alpha
+    -- lets the rounded pill drawn below own selection and hover visuals.
+    if ImGui.PushStyleColor and ImGuiCol then
+        if ImGuiCol.Header then ImGui.PushStyleColor(ImGuiCol.Header,0,0,0,0);headerPush=headerPush+1 end
+        if ImGuiCol.HeaderHovered then ImGui.PushStyleColor(ImGuiCol.HeaderHovered,0,0,0,0);headerPush=headerPush+1 end
+        if ImGuiCol.HeaderActive then ImGui.PushStyleColor(ImGuiCol.HeaderActive,0,0,0,0);headerPush=headerPush+1 end
+    end
+    panel.iconHover=panel.iconHover or {}
+    panel.activeBar=panel.activeBar or {}
+    local iconBase=uiPrefs.iconSize or 14
+    -- Expanded rows shrink the glyph so route text keeps the visual lead.
+    local iconSize=collapsed and iconBase or math.max(9,iconBase-4)
+    for index,ref in ipairs(node.navigation)do
+        local route=ref.child
+        local glyph=routeGlyphs[route.routeId] or "dot"
+        local active=panel[stateKey]==index-1
+        local label=(collapsed and "" or ("     "..route.name)).."##route"..index
+        local sx,sy,sw
+        if ImGui.GetCursorScreenPos and ImGui.GetContentRegionAvail then
+            sx,sy=ImGui.GetCursorScreenPos()
+            sw=ImGui.GetContentRegionAvail() or 0
+        end
+        local prevBar=panel.activeBar[index] or 0
+        local prevHov=panel.iconHover[index] or 0
+        local pillA=math.min(1,0.86*prevBar+0.14*prevHov)
+        if sx and sw>10 and pillA>0.02 and ImGui.AddRectFilled then
+            local ar=math.floor(accent[1]*255+0.5)
+            local ag=math.floor(accent[2]*255+0.5)
+            local ab=math.floor(accent[3]*255+0.5)
+            if prevBar>0.02 then
+                ImGui.AddRectFilled(sx-3,sy-2,sx+sw+3,sy+36,ar,ag,ab,
+                    math.floor(uiGlowAlpha(0.5)*prevBar*255+0.5),18)
+            end
+            ImGui.AddRectFilled(sx+2,sy+1,sx+sw-2,sy+33,ar,ag,ab,
+                math.floor(pillA*255+0.5),16)
+        end
+        local textPush=false
+        if ImGui.PushStyleColor and ImGuiCol and ImGuiCol.Text then
+            if active then ImGui.PushStyleColor(ImGuiCol.Text,1,1,1,1)
+            else ImGui.PushStyleColor(ImGuiCol.Text,0.74,0.72,0.82,1) end
+            textPush=true
+        end
+        local clicked=ImGui.Selectable(label,active,0,0,34)
+        if textPush then ImGui.PopStyleColor(1) end
+        local hovered=ImGui.IsItemHovered and ImGui.IsItemHovered(0) or false
+        panel.iconHover[index]=uiLerp(panel.iconHover[index] or 0,hovered and 1 or 0,dt,uiSpeed(14))
+        panel.activeBar[index]=uiLerp(panel.activeBar[index] or 0,active and 1 or 0,dt,uiSpeed(11))
+        local hov=panel.iconHover[index]
+        if iconsOk then
+            local minX,minY=ImGui.GetItemRectMin()
+            local maxX,maxY=ImGui.GetItemRectMax()
+            local centerX=collapsed and (minX+(maxX-minX)/2) or minX+15
+            local centerY=(minY+maxY)/2
+            local col
+            if active then col={1,1,1}
+            else
+                local v=0.64+0.16*hov
+                col={v,v*0.97,math.min(1,v*1.14)}
+            end
+            uiDrawIcon(glyph,centerX,centerY,iconSize+(collapsed and 2 or 1)*hov,col,255)
+        end
+        uiTip(route.name,collapsed)
+        if clicked then panel[stateKey]=index-1;panel.globalSearch="";panel.library=nil;panel.filter="" end
+    end
+    if headerPush>0 then ImGui.PopStyleColor(headerPush) end
+    if not collapsed then
+        ImGui.Spacing();ImGui.Separator()
+        ImGui.TextDisabled("MeloCatScr 1.1.0")
+    end
+end
+renderPanel = function(node, stateKey, id)
+    if not node or not node.navigation then ImGui.TextDisabled("Loading workspace...");return end
+    panel[stateKey]=math.max(0,math.min(panel[stateKey],#node.navigation-1))
+    local route=node.navigation[panel[stateKey]+1].child
+    uiFontScale()
+    local width=ImGui.GetContentRegionAvail()
+    local narrow=width<640
+    -- The first frame follows the window width; after that the toggle owns the
+    -- state, so a narrow window can still be expanded on demand.
+    if panel.collapsed==nil then panel.collapsed=narrow end
+    local collapsed=panel.collapsed
+    local target=collapsed and 60 or math.max(120,math.min(220,uiPrefs.sidebarW or 165))
+    panel.sidebarW=panel.sidebarW or target
+    panel.sidebarW=uiLerp(panel.sidebarW,target,uiDt("rail"),uiSpeed(12))
+    if math.abs(panel.sidebarW-target)<0.5 then panel.sidebarW=target end
+    local rail=math.max(55,math.min(panel.sidebarW,math.max(target,uiPrefs.sidebarW or 165)+8,math.max(55,width*0.45)))
+    local contrast=(uiPrefs.panelContrast or 100)/100
+    local opacity=(uiPrefs.panelOpacity or 98)/100
+    local function pushBg(r,g,b)
+        if ImGui.PushStyleColor and ImGuiCol and ImGuiCol.ChildBg then
+            ImGui.PushStyleColor(ImGuiCol.ChildBg,math.min(1,r*contrast),math.min(1,g*contrast),math.min(1,b*contrast),opacity)
+            return 1
+        end
+        return 0
+    end
+    local function pushBorder(color,alpha)
+        if ImGui.PushStyleColor and ImGuiCol and ImGuiCol.Border then
+            ImGui.PushStyleColor(ImGuiCol.Border,color[1],color[2],color[3],alpha)
+            return 1
+        end
+        return 0
+    end
+    local function drawShadow(w,h)
+        if not (iconsOk and ImGui.AddRectFilled and ImGui.GetCursorScreenPos and h) then return end
+        local alpha=uiShadowAlpha()
+        if alpha<=0.01 or h<=0 then return end
+        local x,y=ImGui.GetCursorScreenPos()
+        ImGui.AddRectFilled(x+3,y+5,x+w+6,y+h+6,0,0,0,math.floor(alpha*255+0.5),uiRadius())
+    end
+    local accent=uiAccent()
+    local headerH=uiHeaderHeight()
+    local hw=ImGui.GetContentRegionAvail()
+    drawShadow(hw,headerH)
+    local npush=pushBg(0.071,0.075,0.102)
+    local visible=ImGui.BeginChild("MeloHeader##"..id,0,headerH,true,0)
+    if visible then uiFontScale();renderHeader(id)end
+    ImGui.EndChild()
+    if npush>0 then ImGui.PopStyleColor(npush) end
+    local _,sh=ImGui.GetContentRegionAvail()
+    drawShadow(rail,sh)
+    npush=pushBg(0.063,0.067,0.090)
+    local borderPush=pushBorder(accent,uiGlowAlpha(0.42))
+    if ImGui.GetCursorScreenPos then panel.sidebarLeftX=ImGui.GetCursorScreenPos() end
+    visible=ImGui.BeginChild("MeloSidebar##"..id,rail,0,true,0)
+    if visible then uiFontScale();renderSidebar(node,stateKey,id,collapsed,rail)end
+    ImGui.EndChild()
+    if borderPush>0 then ImGui.PopStyleColor(borderPush) end
+    if npush>0 then ImGui.PopStyleColor(npush) end
+    ImGui.SameLine()
+    -- Drag the grip to resize the rail; uiPrefs.sidebarW follows the pointer.
+    if not collapsed and ImGui.InvisibleButton and ImGui.GetMousePos then
+        local gripOk,gripRet=pcall(ImGui.InvisibleButton,"##sidebar-resize",6,math.max(1,sh))
+        if gripOk and gripRet~=nil then
+            local active=ImGui.IsItemActive and ImGui.IsItemActive() or false
+            if active and panel.sidebarLeftX then
+                local okx,mx=pcall(ImGui.GetMousePos)
+                if okx and type(mx)=="number" then
+                    uiPrefs.sidebarW=math.floor(math.max(120,math.min(220,mx-panel.sidebarLeftX))+0.5)
+                end
+            end
+            if iconsOk and ImGui.AddRectFilled and ImGui.GetItemRectMin then
+                local gx1,gy1=ImGui.GetItemRectMin()
+                local gx2,gy2=ImGui.GetItemRectMax()
+                local hovered=ImGui.IsItemHovered and ImGui.IsItemHovered(0) or false
+                local a=active and 0.9 or (hovered and 0.55 or 0.22)
+                local c=uiAccent()
+                ImGui.AddRectFilled(gx1+2,gy1,gx1+4,gy2,
+                    math.floor(c[1]*255+0.5),math.floor(c[2]*255+0.5),math.floor(c[3]*255+0.5),
+                    math.floor(a*255+0.5),2)
+            end
+        end
+    end
+    ImGui.SameLine()
+    local cw,ch=ImGui.GetContentRegionAvail()
+    drawShadow(cw,ch)
+    npush=pushBg(0.071,0.075,0.102)
+    visible=ImGui.BeginChild("MeloContent##"..id,0,0,true,0)
+    if visible then uiFontScale();renderContent(route,stateKey,id)end
+    ImGui.EndChild()
+    if npush>0 then ImGui.PopStyleColor(npush) end
+end
+ClickGUI.AddTab("MeloCatScr",function()
+    if uiGateOpen==false then
+        if ImGui and ImGui.Text then ImGui.Text("Loading MeloCatScr...") end
+        return
+    end
+    local theme <close> = uiThemeScope()
+    renderPanel(root,"category","local")
+end)
+ClickGUI.AddPlayerTab("MeloCatScr",function()
+    if uiGateOpen==false then
+        if ImGui and ImGui.Text then ImGui.Text("Loading MeloCatScr...") end
+        return
+    end
+    local theme <close> = uiThemeScope()
+    renderPlayersPanel("player-tab")
+end)
+
+
+    -- Public bindings -------------------------------------------------------
+    return {
+
+    }
+end
+
+end)()
+-- [/MC:presentation/workspace_view]
+
+
+-- ============================================================================
+-- 03 / MELOCAT EXPERIENCES / Interactive game modes
+-- ============================================================================
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/fire] Fire lifecycle
+-- Owner: experiences/activity_catalog; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.FIRE=function(native,bind)
+    native.FIRE = {STOP_ENTITY_FIRE = bind(0x7F0DD2EBBB651AFF, "InvokeVoid", "i")}
+    native.FIRE.ADD_EXPLOSION = bind(0xE3AD2BDBAEE269AC, "InvokeVoid", "fffifbbfb")
+    native.FIRE.IS_ENTITY_ON_FIRE = bind(0x28D3FED7190D3A0B, "InvokeBool", "i")
+    native.FIRE.STOP_FIRE_IN_RANGE = bind(0x056A8A219B8E829F, "InvokeVoid", "ffff")
+end
+-- [/MC:natives/fire]
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/interior] Interior state
+-- Owner: experiences/scene_director; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.INTERIOR=function(native,bind)
+    native.INTERIOR = {}
+    native.INTERIOR.GET_INTERIOR_FROM_ENTITY = bind(0x2107BA504071A6BB, "InvokeInt", "i")
+end
+-- [/MC:natives/interior]
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/physics] Physics and ropes
+-- Owner: experiences/scene_director; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.PHYSICS=function(native,bind)
+    native.PHYSICS = {}
+    native.PHYSICS.DELETE_ROPE = bind(0x52B4829281364649, "InvokeVoid", "i")
+    native.PHYSICS.ACTIVATE_PHYSICS = bind(0x710311ADF0E20730, "InvokeVoid", "i")
+end
+-- [/MC:natives/physics]
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/shapetest] Scanner raycasts
+-- Owner: experiences/watch_dogs; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.SHAPETEST=function(native,bind)
+    native.SHAPETEST = {}
+    native.SHAPETEST.START_SHAPE_TEST_LOS_PROBE = bind(0x7EE9F5D83DD4F90E, "InvokeInt", "ffffffiii")
+    native.SHAPETEST.GET_SHAPE_TEST_RESULT = bind(0x3D87450E15D98694, "InvokeInt", "iiiii")
+    native.SHAPETEST.START_SHAPE_TEST_CAPSULE = bind(0x28579D1B8F8AAC80, "InvokeInt", "fffffffiii")
+end
+-- [/MC:natives/shapetest]
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/weapon] Weapon operations
+-- Owner: equipment/weapon_catalog; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.WEAPON=function(native,bind)
+    native.WEAPON = {}
+    native.WEAPON.GET_CURRENT_PED_WEAPON_ENTITY_INDEX = bind(0x3B390A939AF0B5FC, "InvokeInt", "ib")
+    native.WEAPON.GET_PED_LAST_WEAPON_IMPACT_COORD = bind(0x6C4D0409BA1A2BC2, "InvokeBool", "ii")
+    native.WEAPON.GIVE_WEAPON_TO_PED = bind(0xBF0FD6E56C964FCB, "InvokeVoid", "iiibb")
+    native.WEAPON.GET_WEAPON_HUD_STATS = bind(0xD92C739EE34C9EBA, "InvokeBool", "ii")
+    native.WEAPON.DOES_WEAPON_TAKE_WEAPON_COMPONENT = bind(0x5CEE3DF569CECAB0, "InvokeBool", "ii")
+    native.WEAPON.CREATE_WEAPON_OBJECT = bind(0x9541D3CF0D398F36, "InvokeInt", "iifffbfiii")
+    native.WEAPON.GIVE_WEAPON_COMPONENT_TO_PED = bind(0xD966D51AA5B28BB9, "InvokeVoid", "iii")
+    native.WEAPON.REMOVE_WEAPON_COMPONENT_FROM_PED = bind(0x1E8BE90C74FB4C09, "InvokeVoid", "iii")
+    native.WEAPON.HAS_PED_GOT_WEAPON_COMPONENT = bind(0xC593212475FAE340, "InvokeBool", "iii")
+    native.WEAPON.IS_PED_WEAPON_COMPONENT_ACTIVE = bind(0x0D78DE0572D3969E, "InvokeBool", "iii")
+    native.WEAPON.GIVE_WEAPON_COMPONENT_TO_WEAPON_OBJECT = bind(0x33E179436C0B31DB, "InvokeVoid", "ii")
+    native.WEAPON.GET_WEAPON_COMPONENT_TYPE_MODEL = bind(0x0DB57B41EC1DB083, "InvokeInt", "i")
+    native.WEAPON.HAS_WEAPON_GOT_WEAPON_COMPONENT = bind(0x76A18844E743BF91, "InvokeBool", "ii")
+    native.WEAPON.REMOVE_WEAPON_COMPONENT_FROM_WEAPON_OBJECT = bind(0xF7D82B0D66777611, "InvokeVoid", "ii")
+    native.WEAPON.SET_WEAPON_OBJECT_TINT_INDEX = bind(0xF827589017D4E4A9, "InvokeVoid", "ii")
+    native.WEAPON.SET_PED_WEAPON_TINT_INDEX = bind(0x50969B9B89ED5738, "InvokeVoid", "iii")
+    native.WEAPON.GET_PED_WEAPON_TINT_INDEX = bind(0x2B9EEDC07BD06B9F, "InvokeInt", "ii")
+    native.WEAPON.HAS_WEAPON_ASSET_LOADED = bind(0x36E353271F0E90EE, "InvokeBool", "i")
+    native.WEAPON.IS_WEAPON_VALID = bind(0x937C71165CF334B3, "InvokeBool", "i")
+    native.WEAPON.REMOVE_WEAPON_ASSET = bind(0xAA08EF13F341C8FC, "InvokeVoid", "i")
+    native.WEAPON.REMOVE_WEAPON_FROM_PED = bind(0x4899CB088EDF59B8, "InvokeVoid", "ii")
+    native.WEAPON.REQUEST_WEAPON_ASSET = bind(0x5443438F033E29C3, "InvokeVoid", "iii")
+    native.WEAPON.GET_SELECTED_PED_WEAPON = bind(0x0A6DB4965674D243, "InvokeInt", "i")
+    native.WEAPON.ADD_AMMO_TO_PED = bind(0x78F0424C34306220, "InvokeVoid", "iii")
+    native.WEAPON.GET_MAX_AMMO = bind(0xDC16122C7A20C933, "InvokeBool", "iii")
+    native.WEAPON.GET_MAX_AMMO_IN_CLIP = bind(0xA38DCFFCEA8962FA, "InvokeInt", "iib")
+    native.WEAPON.SET_AMMO_IN_CLIP = bind(0xDCD2A934D65CB497, "InvokeBool", "iii")
+    native.WEAPON.SET_PED_AMMO = bind(0x14E56BC5B5DB6A19, "InvokeVoid", "iiib")
+    native.WEAPON.IS_PED_ARMED = bind(0x475768A975D5AD17, "InvokeBool", "ii")
+    native.WEAPON.SET_CURRENT_PED_WEAPON = bind(0xADF692B254977C0C, "InvokeVoid", "iib")
+    native.WEAPON.HAS_PED_GOT_WEAPON = bind(0x8DECB02F88F428BC, "InvokeBool", "iib")
+    native.WEAPON.REMOVE_ALL_PED_WEAPONS = bind(0xF25DF915FA38C5F3, "InvokeVoid", "ib")
+    native.WEAPON.SET_PED_INFINITE_AMMO = bind(0x3EDCB0505123623B, "InvokeVoid", "ibi")
+    native.WEAPON.SET_PED_INFINITE_AMMO_CLIP = bind(0x183DADC6AA953186, "InvokeVoid", "ib")
+    native.WEAPON.SET_WEAPON_DAMAGE_MODIFIER = bind(0x4757F00BC6323CFE, "InvokeVoid", "if")
+end
+-- [/MC:natives/weapon]
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/ped] Character operations
+-- Owner: agent/capabilities; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.PED=function(native,bind)
+    native.PED = {}
+    native.PED.GET_PED_BONE_COORDS = bind(0x17C07FC640E86B4E, "InvokeV3", "iifff")
+    native.PED.SET_PED_ARMOUR = bind(0xCEA04D83135264CC, "InvokeVoid", "ii")
+    native.PED.SET_PED_CAN_RAGDOLL = bind(0xB128377056A54E2A, "InvokeVoid", "ib")
+    native.PED.GET_VEHICLE_PED_IS_IN = bind(0x9A9112A0FE9A4713, "InvokeInt", "ib")
+    native.PED.IS_PED_A_PLAYER = bind(0x12534C348C6CB68B, "InvokeBool", "i")
+    native.PED.IS_PED_DEAD_OR_DYING = bind(0x3317DEDB88C95038, "InvokeBool", "ib")
+    native.PED.IS_PED_IN_ANY_VEHICLE = bind(0x997ABD671D25CA0B, "InvokeBool", "ib")
+    native.PED.IS_PED_SHOOTING = bind(0x34616828CD07F1A1, "InvokeBool", "i")
+    native.PED.SET_BLOCKING_OF_NON_TEMPORARY_EVENTS = bind(0x9F8AA94D6D97DBF4, "InvokeVoid", "ib")
+    native.PED.SET_PED_COMPONENT_VARIATION = bind(0x262B14F48D29DE80, "InvokeVoid", "iiiii")
+    native.PED.SET_PED_INTO_VEHICLE = bind(0xF75B0D629E1C063D, "InvokeVoid", "iii")
+    native.PED.SET_PED_KEEP_TASK = bind(0x971D38760FBC02EF, "InvokeVoid", "ib")
+    native.PED.GET_PED_ARMOUR = bind(0x9483AF821605B1D8, "InvokeInt", "i")
+    native.PED.CAN_PED_RAGDOLL = bind(0x128F79EDCECE4FD5, "InvokeBool", "i")
+    native.PED.SET_PED_TO_RAGDOLL = bind(0xAE99FB955581844A, "InvokeBool", "iiiibbb")
+    native.PED.CLEAR_PED_BLOOD_DAMAGE = bind(0x8FE22675A5A45817, "InvokeVoid", "i")
+    native.PED.CLEAR_PED_WETNESS = bind(0x9C720776DAA43E7E, "InvokeVoid", "i")
+    native.PED.SET_PED_WETNESS_HEIGHT = bind(0x44CB6447D2571AA0, "InvokeVoid", "if")
+    native.PED.CLEAR_PED_ENV_DIRT = bind(0x6585D955A68452A5, "InvokeVoid", "i")
+    native.PED.SET_PED_SWEAT = bind(0x27B0405F59637D1F, "InvokeVoid", "if")
+    native.PED.CLEAR_FACIAL_IDLE_ANIM_OVERRIDE = bind(0x726256CC1EEB182F, "InvokeVoid", "i")
+    native.PED.CLONE_PED = bind(0xEF29A16337FACADB, "InvokeInt", "ibbb")
+    native.PED.SET_PED_MOVE_RATE_OVERRIDE = bind(0x085BF80FA50A39D1, "InvokeVoid", "if")
+    native.PED.IS_PED_FALLING = bind(0xFB92A102F1C4DFA3, "InvokeBool", "i")
+    native.PED.IS_PED_IN_PARACHUTE_FREE_FALL = bind(0x7DCE8BDA0F1C1200, "InvokeBool", "i")
+    native.PED.IS_PED_USING_SCENARIO = bind(0x1BF094736DD62C2E, "InvokeBool", "is")
+    native.PED.GET_PED_DRAWABLE_VARIATION = bind(0x67F3780DD425D4FC, "InvokeInt", "ii")
+    native.PED.GET_NUMBER_OF_PED_DRAWABLE_VARIATIONS = bind(0x27561561732A7842, "InvokeInt", "ii")
+    native.PED.GET_PED_TEXTURE_VARIATION = bind(0x04A355E041E004E6, "InvokeInt", "ii")
+    native.PED.GET_NUMBER_OF_PED_TEXTURE_VARIATIONS = bind(0x8F7156A3142A6BAD, "InvokeInt", "iii")
+    native.PED.GET_NUMBER_OF_PED_PROP_DRAWABLE_VARIATIONS = bind(0x5FAF9754E789FB47, "InvokeInt", "ii")
+    native.PED.GET_NUMBER_OF_PED_PROP_TEXTURE_VARIATIONS = bind(0xA6E7F1CEB523E171, "InvokeInt", "iii")
+    native.PED.GET_PED_PALETTE_VARIATION = bind(0xE3DD5F2A84B42281, "InvokeInt", "ii")
+    native.PED.GET_PED_PROP_INDEX = bind(0x898CC20EA75BACD8, "InvokeInt", "iii")
+    native.PED.SET_PED_PROP_INDEX = bind(0x93376B65A266EB5F, "InvokeVoid", "iiiibi")
+    native.PED.CLEAR_PED_PROP = bind(0x0943E5B8E078E76E, "InvokeVoid", "iii")
+    native.PED.GET_PED_PROP_TEXTURE_INDEX = bind(0xE131A28626F81AB2, "InvokeInt", "ii")
+    native.PED.IS_PED_IN_COMBAT = bind(0x4859F1FC66A6278E, "InvokeBool", "ii")
+    native.PED.IS_PED_BEING_STUNNED = bind(0x4FBACCE3B4138EE8, "InvokeBool", "ii")
+    native.PED.IS_PED_HUMAN = bind(0xB980061DA992779D, "InvokeBool", "i")
+    native.PED.IS_PED_RAGDOLL = bind(0x47E4E977581C5B55, "InvokeBool", "i")
+    native.PED.GET_PED_BONE_INDEX = bind(0x3F428D08BE5AAE31, "InvokeInt", "ii")
+    native.PED.GET_PED_SOURCE_OF_DEATH = bind(0x93C8B64DEB84728C, "InvokeInt", "i")
+end
+-- [/MC:natives/ped]
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/vehicle] Vehicle operations
+-- Owner: agent/control_catalog; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.VEHICLE=function(native,bind)
+    native.VEHICLE = {}
+    native.VEHICLE.GET_VEHICLE_MAX_NUMBER_OF_PASSENGERS = bind(0xA7C4F2C6E744A550, "InvokeInt", "i")
+    native.VEHICLE.IS_VEHICLE_SEAT_FREE = bind(0x22AC59A870E6A669, "InvokeBool", "iib")
+    native.VEHICLE.SET_VEHICLE_FORWARD_SPEED = bind(0xAB54A438726D25D5, "InvokeVoid", "if")
+    native.VEHICLE.SET_VEHICLE_CHEAT_POWER_INCREASE = bind(0xB59E4BD37AE292DB, "InvokeVoid", "if")
+    native.VEHICLE.SET_VEHICLE_MOD_KIT = bind(0x1F2AA07F00B3217A, "InvokeVoid", "ii")
+    native.VEHICLE.GET_VEHICLE_MOD_KIT = bind(0x6325D1A044AE510D, "InvokeInt", "i")
+    native.VEHICLE.GET_NUM_VEHICLE_MODS = bind(0xE38E9162A2500646, "InvokeInt", "ii")
+    native.VEHICLE.GET_VEHICLE_MOD = bind(0x772960298DA26FDB, "InvokeInt", "ii")
+    native.VEHICLE.SET_VEHICLE_MOD = bind(0x6AF0636DDEDCB6DD, "InvokeVoid", "iiib")
+    native.VEHICLE.IS_TOGGLE_MOD_ON = bind(0x84B233A8C8FC8AE7, "InvokeBool", "ii")
+    native.VEHICLE.TOGGLE_VEHICLE_MOD = bind(0x2A1F4F37F95BAD08, "InvokeVoid", "iib")
+    native.VEHICLE.SET_VEHICLE_FIXED = bind(0x115722B1B9C14C1C, "InvokeVoid", "i")
+    native.VEHICLE.SET_VEHICLE_DEFORMATION_FIXED = bind(0x953DA1E1B12C0491, "InvokeVoid", "i")
+    native.VEHICLE.SET_VEHICLE_DIRT_LEVEL = bind(0x79D3B596FE44EE8B, "InvokeVoid", "if")
+    native.VEHICLE.SET_VEHICLE_TYRE_FIXED = bind(0x6E13FC662B882D1D, "InvokeVoid", "ii")
+    native.VEHICLE.FIX_VEHICLE_WINDOW = bind(0x772282EBEB95E682, "InvokeVoid", "ii")
+    native.VEHICLE.SET_VEHICLE_ON_GROUND_PROPERLY = bind(0x49733E92263139D1, "InvokeBool", "if")
+    native.VEHICLE.SET_VEHICLE_DOORS_LOCKED = bind(0xB664292EAECF7FA6, "InvokeVoid", "ii")
+    native.VEHICLE.SET_VEHICLE_ENGINE_ON = bind(0x2497C4717C8B881E, "InvokeVoid", "ibbb")
+    native.VEHICLE.SET_VEHICLE_ENGINE_HEALTH = bind(0x45F6D8EEF34ABEF1, "InvokeVoid", "if")
+    native.VEHICLE.SET_VEHICLE_UNDRIVEABLE = bind(0x8ABA6AF54B942B95, "InvokeVoid", "ib")
+    native.VEHICLE.START_VEHICLE_HORN = bind(0x9C8C6504B5B63D2C, "InvokeVoid", "iiib")
+    native.VEHICLE.SET_VEHICLE_DOOR_OPEN = bind(0x7C65DAC73C35C862, "InvokeVoid", "iibb")
+    native.VEHICLE.SET_VEHICLE_DOORS_SHUT = bind(0x781B3D62BB013EF5, "InvokeVoid", "ib")
+    native.VEHICLE.ROLL_DOWN_WINDOWS = bind(0x85796B0549DDE156, "InvokeVoid", "i")
+    native.VEHICLE.ROLL_UP_WINDOW = bind(0x602E548F46E24D59, "InvokeVoid", "ii")
+    native.VEHICLE.SET_VEHICLE_LIGHTS = bind(0x34E710FF01247C5A, "InvokeVoid", "ii")
+    native.VEHICLE.SET_VEHICLE_COLOURS = bind(0x4F1D4BE3A7F24601, "InvokeVoid", "iii")
+    native.VEHICLE.GET_VEHICLE_COLOURS = bind(0xA19435F193E081AC, "InvokeVoid", "iii")
+    native.VEHICLE.GET_PED_IN_VEHICLE_SEAT = bind(0xBB40DD2270B65366, "InvokeInt", "iib")
+    native.VEHICLE.GET_VEHICLE_NUMBER_PLATE_TEXT = bind(0x7CE1CCB9B293020E, "InvokeString", "i")
+    native.VEHICLE.GET_DISPLAY_NAME_FROM_VEHICLE_MODEL = bind(0xB215AAC32D25D019, "InvokeString", "i")
+    native.VEHICLE.IS_THIS_MODEL_A_BIKE = bind(0xB50C0B0CEDC6CE84, "InvokeBool", "i")
+    native.VEHICLE.IS_THIS_MODEL_A_CAR = bind(0x7F6DB52EEFC96DF8, "InvokeBool", "i")
+    native.VEHICLE.SET_VEHICLE_TYRE_BURST = bind(0xEC6A202EE4960385, "InvokeVoid", "iibf")
+    native.VEHICLE.SET_VEHICLE_NUMBER_PLATE_TEXT = bind(0x95A88F0B409CDA47, "InvokeVoid", "is")
+    native.VEHICLE.SET_VEHICLE_DOOR_BROKEN = bind(0xD4D4F6A4AB575A33, "InvokeVoid", "iib")
+    native.VEHICLE.SET_VEHICLE_DAMAGE = bind(0xA1DD317EA8FD4F29, "InvokeVoid", "ifffffb")
+    native.VEHICLE.GET_VEHICLE_TYRES_CAN_BURST = bind(0x678B9BB8C3F58FEB, "InvokeBool", "i")
+    native.VEHICLE.SET_VEHICLE_TYRES_CAN_BURST = bind(0xEB9DC3C7D8596C46, "InvokeVoid", "ib")
+    native.VEHICLE.GET_VEHICLE_PETROL_TANK_HEALTH = bind(0x7D5DABE888D2D074, "InvokeFloat", "i")
+    native.VEHICLE.SET_VEHICLE_PETROL_TANK_HEALTH = bind(0x70DB57649FA8D0D8, "InvokeVoid", "if")
+    native.VEHICLE.GET_VEHICLE_CLASS = bind(0x29439776AAA00A62, "InvokeInt", "i")
+    native.VEHICLE.SMASH_VEHICLE_WINDOW = bind(0x9E5B5E4D2CCD2259, "InvokeVoid", "ii")
+    native.VEHICLE.SET_VEHICLE_ALARM = bind(0xCDE5E70C1DDB954C, "InvokeVoid", "ib")
+    native.VEHICLE.START_VEHICLE_ALARM = bind(0xB8FF7AB45305C345, "InvokeVoid", "i")
+    native.VEHICLE.IS_VEHICLE_ALARM_ACTIVATED = bind(0x4319E335B71FFF34, "InvokeBool", "i")
+    native.VEHICLE.SET_VEHICLE_DOOR_CONTROL = bind(0xF2BFA0430F0A0FCB, "InvokeVoid", "iiif")
+    native.VEHICLE.GET_VEHICLE_DOOR_ANGLE_RATIO = bind(0xFE3F9C29F7B32BD5, "InvokeFloat", "ii")
+    native.VEHICLE.SET_VEHICLE_DOOR_SHUT = bind(0x93D9BD300D7789E5, "InvokeVoid", "iib")
+    native.VEHICLE.GET_VEHICLE_DOOR_LOCK_STATUS = bind(0x25BC98A59C2EA962, "InvokeInt", "i")
+    native.VEHICLE.GET_VEHICLE_ENGINE_HEALTH = bind(0xC45D23BAF168AAB8, "InvokeFloat", "i")
+    native.VEHICLE.IS_VEHICLE_WINDOW_INTACT = bind(0x46E571A0E20D01F1, "InvokeBool", "ii")
+    native.VEHICLE.GET_IS_VEHICLE_ENGINE_RUNNING = bind(0xAE31E7DF9B5B132E, "InvokeBool", "i")
+    native.VEHICLE.GET_IS_DOOR_VALID = bind(0x645F4B6E8499F632, "InvokeBool", "ii")
+    native.VEHICLE.SET_VEHICLE_STEER_BIAS = bind(0x42A8EC77D5150CBE, "InvokeVoid", "if")
+    native.VEHICLE.SET_VEHICLE_HANDBRAKE = bind(0x684785568EF26A22, "InvokeVoid", "ib")
+    native.VEHICLE.SET_VEHICLE_CUSTOM_PRIMARY_COLOUR = bind(0x7141766F91D15BEA, "InvokeVoid", "iiii")
+    native.VEHICLE.SET_VEHICLE_CUSTOM_SECONDARY_COLOUR = bind(0x36CED73BFED89754, "InvokeVoid", "iiii")
+    native.VEHICLE.GET_VEHICLE_CUSTOM_PRIMARY_COLOUR = bind(0xB64CF2CCA9D95F52, "InvokeVoid", "iiii")
+    native.VEHICLE.CLEAR_VEHICLE_CUSTOM_PRIMARY_COLOUR = bind(0x55E1D2758F34E437, "InvokeVoid", "i")
+    native.VEHICLE.GET_IS_VEHICLE_PRIMARY_COLOUR_CUSTOM = bind(0xF095C0405307B21B, "InvokeBool", "i")
+    native.VEHICLE.GET_VEHICLE_CUSTOM_SECONDARY_COLOUR = bind(0x8389CD56CA8072DC, "InvokeVoid", "iiii")
+    native.VEHICLE.CLEAR_VEHICLE_CUSTOM_SECONDARY_COLOUR = bind(0x5FFBDEEC3E8E2009, "InvokeVoid", "i")
+    native.VEHICLE.GET_IS_VEHICLE_SECONDARY_COLOUR_CUSTOM = bind(0x910A32E7AAD2656C, "InvokeBool", "i")
+end
+-- [/MC:natives/vehicle]
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/task] Character tasks and animation
+-- Owner: agent/daily_routines; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.TASK=function(native,bind)
+    native.TASK = {}
+    native.TASK.IS_PED_STILL = bind(0xAC29253EEF8F0180, "InvokeBool", "i")
+    native.TASK.TASK_DRIVE_BY = bind(0x2F8AF0E82773A171, "InvokeVoid", "iiiffffibi")
+    native.TASK.TASK_FOLLOW_TO_OFFSET_OF_ENTITY = bind(0x304AE42E357B8C7E, "InvokeVoid", "iiffffifb")
+    native.TASK.TASK_VEHICLE_DRIVE_TO_COORD_LONGRANGE = bind(0x158BB33F920D360C, "InvokeVoid", "iiffffif")
+    native.TASK.TASK_HANDS_UP = bind(0xF2EAB31979A7F910, "InvokeVoid", "iiiii")
+    native.TASK.CLEAR_PED_TASKS = bind(0xE1EF3C1216AFF2CD, "InvokeVoid", "i")
+    native.TASK.TASK_START_SCENARIO_IN_PLACE = bind(0x142A02425FF02BD9, "InvokeVoid", "isib")
+    native.TASK.TASK_PLAY_ANIM = bind(0xEA47FE3719165B94, "InvokeVoid", "issffiifbbb")
+    native.TASK.TASK_ENTER_VEHICLE = bind(0xC20E50AA46D09CA8, "InvokeVoid", "iiiifis")
+    native.TASK["TASK_".."ST".."AND_STILL"] = bind(0x919BE13EED931959, "InvokeVoid", "ii")
+    native.TASK.TASK_GO_STRAIGHT_TO_COORD = bind(0xD76B57B44F1E6F8B, "InvokeVoid", "iffffiff")
+    native.TASK.TASK_SMART_FLEE_PED = bind(0x22B0D0E37CCB840D, "InvokeVoid", "iifibb")
+    native.TASK.STOP_ANIM_TASK = bind(0x97FF36A1D40EA00A, "InvokeVoid", "issf")
+    native.TASK.TASK_LOOK_AT_COORD = bind(0x6FA46612594F7973, "InvokeVoid", "ifffiii")
+    native.TASK.GET_SCRIPT_TASK_STATUS = bind(0x77F1BEB8863288D5, "InvokeInt", "ii")
+    native.TASK.TASK_USE_MOBILE_PHONE_TIMED = bind(0x5EE02954A14C69DB, "InvokeVoid", "ii")
+    native.TASK.TASK_COMBAT_PED = bind(0xF166E48407BAC484, "InvokeVoid", "iiii")
+    native.TASK.TASK_VEHICLE_SHOOT_AT_PED = bind(0x10AB107B887214D8, "InvokeVoid", "iif")
+    native.TASK.TASK_LEAVE_VEHICLE = bind(0xD3DBCE61A490BE02, "InvokeVoid", "iii")
+end
+-- [/MC:natives/task]
+
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/path] Road and navigation queries
+-- Owner: agent/daily_routines; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.PATH=function(native,bind)
+    native.PATH = {}
+    native.PATH.GET_CLOSEST_VEHICLE_NODE_WITH_HEADING = bind(0xFF071FB798B803B0, "InvokeBool", "fffiiiff")
+end
+-- [/MC:natives/path]
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/network] Network and session operations
+-- Owner: network/session_tools; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.NETWORK=function(native,bind)
+    native.NETWORK = {}
+    native.NETWORK.NETWORK_GET_ENTITY_IS_NETWORKED = bind(0xC7827959479DCC78, "InvokeBool", "i")
+    native.NETWORK.NETWORK_HASH_FROM_PLAYER_HANDLE = bind(0xBC1D768F2F5D6C05, "InvokeInt", "i")
+    native.NETWORK.NETWORK_HAS_CONTROL_OF_ENTITY = bind(0x01BF60A500E28887, "InvokeBool", "i")
+    native.NETWORK.NETWORK_IS_PLAYER_ACTIVE = bind(0xB8DFD30D6973E135, "InvokeBool", "i")
+    native.NETWORK.NETWORK_REQUEST_CONTROL_OF_ENTITY = bind(0xB69317BF5E782347, "InvokeBool", "i")
+    native.NETWORK.NETWORK_GET_NETWORK_ID_FROM_ENTITY = bind(0xA11700682F3AD45C, "InvokeInt", "i")
+    native.NETWORK.NETWORK_SET_IN_SPECTATOR_MODE = bind(0x423DE3854BB50894, "InvokeVoid", "bi")
+    native.NETWORK.NETWORK_IS_IN_SPECTATOR_MODE = bind(0x048746E388762E11, "InvokeBool", "")
+    native.NETWORK.CLOUD_CHECK_AVAILABILITY = bind(0x4F18196C8D38768D, "InvokeVoid", "")
+    native.NETWORK.CLOUD_GET_AVAILABILITY_CHECK_RESULT = bind(0x0B0CC10720653F3B, "InvokeBool", "")
+    native.NETWORK.CLOUD_IS_CHECKING_AVAILABILITY = bind(0xC7ABAC5DE675EE3B, "InvokeBool", "")
+    native.NETWORK.GET_CLOUD_TIME_AS_STRING = bind(0xF12E6CD06C73D69E, "InvokeString", "")
+    native.NETWORK.GET_NETWORK_TIME_ACCURATE = bind(0x89023FBBF9200E9F, "InvokeInt", "")
+    native.NETWORK.GET_ONLINE_VERSION = bind(0xFCA9373EF340AC0A, "InvokeString", "")
+    native.NETWORK.HAS_NETWORK_TIME_STARTED = bind(0x46718ACEEDEAFC84, "InvokeBool", "")
+    native.NETWORK.NETWORK_AM_I_MUTED_BY_PLAYER = bind(0x9D6981DFC91A8604, "InvokeBool", "i")
+    native.NETWORK.NETWORK_GET_FRIEND_COUNT = bind(0x203F1CFD823B27A4, "InvokeInt", "")
+    native.NETWORK.NETWORK_GET_FRIEND_NAME = bind(0xE11EBBB2A783FE8B, "InvokeString", "i")
+    native.NETWORK.NETWORK_GET_HOST_OF_SCRIPT = bind(0x1D6A14F1F9A736FC, "InvokeInt", "sii")
+    native.NETWORK.NETWORK_GET_TALKER_PROXIMITY = bind(0x84F0F13120B4E098, "InvokeFloat", "")
+    native.NETWORK.NETWORK_GET_TIMEOUT_TIME = bind(0x5ED0356A0CE3A34F, "InvokeInt", "")
+    native.NETWORK.NETWORK_HANDLE_FROM_FRIEND = bind(0xD45CB817D7E177D2, "InvokeVoid", "iii")
+    native.NETWORK.NETWORK_HAVE_ONLINE_PRIVILEGES = bind(0x25CB5A9F37BFD063, "InvokeBool", "")
+    native.NETWORK.NETWORK_IS_ACTIVITY_SPECTATOR = bind(0x12103B9E0C9F92FB, "InvokeBool", "")
+    native.NETWORK.NETWORK_IS_CLOUD_AVAILABLE = bind(0x9A4CF4F48AD77302, "InvokeBool", "")
+    native.NETWORK.NETWORK_IS_FRIEND_INDEX_ONLINE = bind(0xBAD8F2A42B844821, "InvokeBool", "i")
+    native.NETWORK.NETWORK_IS_FRIEND_IN_MULTIPLAYER = bind(0x57005C18827F3A28, "InvokeBool", "s")
+    native.NETWORK.NETWORK_IS_FRIEND_IN_SAME_TITLE = bind(0x2EA9A3BEDF3F17B8, "InvokeBool", "s")
+    native.NETWORK.NETWORK_IS_GAMER_IN_MY_SESSION = bind(0x0F10B05DDF8D16E9, "InvokeBool", "i")
+    native.NETWORK.NETWORK_IS_HANDLE_VALID = bind(0x6F79B93B0A8E4133, "InvokeBool", "ii")
+    native.NETWORK.NETWORK_IS_HOST = bind(0x8DB296B814EDDA07, "InvokeBool", "")
+    native.NETWORK.NETWORK_IS_IN_SESSION = bind(0xCA97246103B63917, "InvokeBool", "")
+    native.NETWORK.NETWORK_IS_IN_TRANSITION = bind(0x68049AEFF83D8F0A, "InvokeBool", "")
+    native.NETWORK.NETWORK_IS_PLAYER_A_PARTICIPANT_ON_SCRIPT = bind(0x1AD5B71586B94820, "InvokeBool", "isi")
+    native.NETWORK.NETWORK_IS_PLAYER_MUTED_BY_ME = bind(0x8C71288AE68EDE39, "InvokeBool", "i")
+    native.NETWORK.NETWORK_IS_PLAYER_TALKING = bind(0x031E11F3D447647E, "InvokeBool", "i")
+    native.NETWORK.NETWORK_IS_PUSH_TO_TALK_ACTIVE = bind(0xC0D2AF00BCC234CA, "InvokeBool", "")
+    native.NETWORK.NETWORK_IS_SESSION_ACTIVE = bind(0xD83C2B94E7508980, "InvokeBool", "")
+    native.NETWORK.NETWORK_IS_SESSION_BUSY = bind(0xF4435D66A8E2905E, "InvokeBool", "")
+    native.NETWORK.NETWORK_IS_SIGNED_IN = bind(0x054354A99211EB96, "InvokeBool", "")
+    native.NETWORK.NETWORK_IS_SIGNED_ONLINE = bind(0x1077788E268557C2, "InvokeBool", "")
+    native.NETWORK.NETWORK_IS_TRANSITION_HOST = bind(0x0B824797C9BF2159, "InvokeBool", "")
+    native.NETWORK.NETWORK_IS_TUNABLE_CLOUD_REQUEST_PENDING = bind(0x0467C11ED88B7D28, "InvokeBool", "")
+    native.NETWORK.NETWORK_REQUEST_CLOUD_TUNABLES = bind(0x42FB3B532D526E6C, "InvokeVoid", "")
+    native.NETWORK.NETWORK_SESSION_CANCEL_INVITE = bind(0x2FBF47B1B36D36F9, "InvokeVoid", "")
+    native.NETWORK.NETWORK_SESSION_GET_PRIVATE_SLOTS = bind(0x53AFD64C6758F2F9, "InvokeInt", "")
+    native.NETWORK.NETWORK_SESSION_IS_AWAITING_INVITE_RESPONSE = bind(0xD313DE83394AF134, "InvokeBool", "")
+    native.NETWORK.NETWORK_SESSION_IS_CLOSED_CREW = bind(0x74732C6CA90DA2B4, "InvokeBool", "")
+    native.NETWORK.NETWORK_SESSION_IS_CLOSED_FRIENDS = bind(0xFBCFA2EA2E206890, "InvokeBool", "")
+    native.NETWORK.NETWORK_SESSION_IS_DISPLAYING_INVITE_CONFIRMATION = bind(0xBDB6F89C729CF388, "InvokeBool", "")
+    native.NETWORK.NETWORK_SESSION_IS_IN_VOICE_SESSION = bind(0x855BC38818F6F684, "InvokeBool", "")
+    native.NETWORK.NETWORK_SESSION_IS_PRIVATE = bind(0xCEF70AA5B3F89BA1, "InvokeBool", "")
+    native.NETWORK.NETWORK_SESSION_IS_SOLO = bind(0xF3929C2379B60CCE, "InvokeBool", "")
+    native.NETWORK.NETWORK_SESSION_IS_VOICE_SESSION_ACTIVE = bind(0xB5D3453C98456528, "InvokeBool", "")
+    native.NETWORK.NETWORK_SESSION_IS_VOICE_SESSION_BUSY = bind(0xEF0912DDF7C4CB4B, "InvokeBool", "")
+    native.NETWORK.NETWORK_SESSION_JOIN_INVITE = bind(0xC6F8AB8A4189CF3A, "InvokeVoid", "")
+    native.NETWORK.NETWORK_SESSION_WAS_INVITED = bind(0x23DFB504655D0CE4, "InvokeBool", "")
+    native.NETWORK.NETWORK_SET_TALKER_PROXIMITY = bind(0xCBF12D65F95AD686, "InvokeVoid", "f")
+    native.NETWORK.NETWORK_SET_VOICE_ACTIVE = bind(0xBABEC9E69A91C57B, "InvokeVoid", "b")
+    native.NETWORK.NETWORK_SESSION_KICK_PLAYER = bind(0xFA8904DC5F304220, "InvokeVoid", "i")
+    native.NETWORK.NETWORK_PLAYER_IS_BADSPORT = bind(0x19D8DA0E5A68045A, "InvokeBool", "")
+    native.NETWORK.NETWORK_GET_HOST_PLAYER_INDEX = bind(0x8251FB94DC4FDFC8, "InvokeInt", "")
+end
+-- [/MC:natives/network]
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/streaming] Model and animation streaming
+-- Owner: world/asset_streamer; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.STREAMING=function(native,bind)
+    native.STREAMING = {}
+    native.STREAMING.HAS_MODEL_LOADED = bind(0x98A4EB5D89A0C952, "InvokeBool", "i")
+    native.STREAMING.IS_MODEL_VALID = bind(0xC0296A2EDF545E92, "InvokeBool", "i")
+    native.STREAMING.REQUEST_MODEL = bind(0x963D27A58DF860AC, "InvokeVoid", "i")
+    native.STREAMING.SET_MODEL_AS_NO_LONGER_NEEDED = bind(0xE532F5D78798DAAB, "InvokeVoid", "i")
+    native.STREAMING.REQUEST_COLLISION_AT_COORD = bind(0x07503F7948F491A7, "InvokeVoid", "fff")
+    native.STREAMING.REQUEST_ANIM_DICT = bind(0xD3BD40951412FEF6, "InvokeVoid", "s")
+    native.STREAMING.HAS_ANIM_DICT_LOADED = bind(0xD031A9162D01088C, "InvokeBool", "s")
+    native.STREAMING.REMOVE_ANIM_DICT = bind(0xF66A602F829E2A06, "InvokeVoid", "s")
+    native.STREAMING.IS_MODEL_A_VEHICLE = bind(0x19AAC8F07BFEC53E, "InvokeBool", "i")
+    native.STREAMING.NEW_LOAD_SCENE_START_SPHERE = bind(0xACCFB4ACF53551B0, "InvokeBool", "ffffi")
+    native.STREAMING.NEW_LOAD_SCENE_STOP = bind(0xC197616D221FF4A4, "InvokeVoid", "")
+    native.STREAMING.IS_NEW_LOAD_SCENE_LOADED = bind(0x01B8247A7A8B9AD1, "InvokeBool", "")
+    native.STREAMING.IS_NEW_LOAD_SCENE_ACTIVE = bind(0xA41A05B6CB741B85, "InvokeBool", "")
+    native.STREAMING.SET_FOCUS_POS_AND_VEL = bind(0xBB7454BAFF08FE25, "InvokeVoid", "ffffff")
+    native.STREAMING.CLEAR_FOCUS = bind(0x31B73D1EA9F01DA2, "InvokeVoid", "")
+end
+-- [/MC:natives/streaming]
+
+-- ----------------------------------------------------------------------------
+-- [MC:natives/entity] Entity ownership and transforms
+-- Owner: world/entity_registry; initialized by platform/native_gateway.
+-- ----------------------------------------------------------------------------
+nativeSections.ENTITY=function(native,bind)
+    native.ENTITY = {}
+    native.ENTITY.APPLY_FORCE_TO_ENTITY = bind(0xC5F68BE9613E2D18, "InvokeVoid", "iiffffffibbbbb")
+    native.ENTITY.ATTACH_ENTITY_TO_ENTITY = bind(0x6B9BBD38AB0796DF, "InvokeVoid", "iiiffffffbbbbibi")
+    native.ENTITY.DELETE_ENTITY = bind(0xAE3CBE5BF394C9C9, "InvokeVoid", "i")
+    native.ENTITY.DOES_ENTITY_EXIST = bind(0x7239B21A38F536BA, "InvokeBool", "i")
+    native.ENTITY.FREEZE_ENTITY_POSITION = bind(0x428CA6DBD1094446, "InvokeVoid", "ib")
+    native.ENTITY.GET_ENTITY_BONE_INDEX_BY_NAME = bind(0xFB71170B7E76ACBA, "InvokeInt", "is")
+    native.ENTITY.GET_ENTITY_COORDS = bind(0x3FEF770D40960D5A, "InvokeV3", "ib")
+    native.ENTITY.GET_ENTITY_HEADING = bind(0xE83D4F9BA2A38914, "InvokeFloat", "i")
+    native.ENTITY.GET_ENTITY_MODEL = bind(0x9F47B058362C84B5, "InvokeInt", "i")
+    native.ENTITY.GET_ENTITY_ROTATION = bind(0xAFBD61CC738D9EB9, "InvokeV3", "ii")
+    native.ENTITY.GET_OFFSET_FROM_ENTITY_IN_WORLD_COORDS = bind(0x1899F328B0E12848, "InvokeV3", "ifff")
+    native.ENTITY.IS_ENTITY_A_MISSION_ENTITY = bind(0x0A7B270912999B3C, "InvokeBool", "i")
+    native.ENTITY.IS_ENTITY_A_VEHICLE = bind(0x6AC7003FA6E5575E, "InvokeBool", "i")
+    native.ENTITY.SET_ENTITY_AS_MISSION_ENTITY = bind(0xAD738C3085FE7E11, "InvokeVoid", "ibb")
+    native.ENTITY.SET_ENTITY_CAN_BE_DAMAGED = bind(0x1760FFA8AB074D66, "InvokeVoid", "ib")
+    native.ENTITY.SET_ENTITY_COLLISION = bind(0x1A9205C1B9EE827F, "InvokeVoid", "ibb")
+    native.ENTITY.SET_ENTITY_COORDS_NO_OFFSET = bind(0x239A3351AC1DA385, "InvokeVoid", "ifffbbb")
+    native.ENTITY.SET_ENTITY_INVINCIBLE = bind(0x3882114BDE571AD4, "InvokeVoid", "ibb")
+    native.ENTITY.SET_ENTITY_PROOFS = bind(0xFAEE099C6F890BB8, "InvokeVoid", "ibbbbbbbb")
+    native.ENTITY.SET_ENTITY_ROTATION = bind(0x8524A8B0171D5E07, "InvokeVoid", "ifffib")
+    native.ENTITY.SET_ENTITY_VISIBLE = bind(0xEA1C610A04DB6BBB, "InvokeVoid", "ibb")
+    native.ENTITY._GET_ENTITY_BONE_POSITION_2 = bind(0x46F8696933A63C9B, "InvokeV3", "ii")
+    native.ENTITY.GET_WORLD_POSITION_OF_ENTITY_BONE = bind(0x44A8FCB8ED227738, "InvokeV3", "ii")
+    native.ENTITY._GET_ENTITY_PROOFS = bind(0xBE8CD9BE829BBEBF, "InvokeBool", "iiiiiiiii")
+    native.ENTITY.GET_ENTITY_HEALTH = bind(0xEEF059FAD016D209, "InvokeInt", "i")
+    native.ENTITY.GET_ENTITY_MAX_HEALTH = bind(0x15D757606D170C3C, "InvokeInt", "i")
+    native.ENTITY.SET_ENTITY_HEADING = bind(0x8E2530AA8ADA980E, "InvokeVoid", "if")
+    native.ENTITY.SET_ENTITY_HEALTH = bind(0x6B76DC1F3AE6E6A3, "InvokeVoid", "iiii")
+    native.ENTITY.SET_ENTITY_VELOCITY = bind(0x1C99BB7B6E96D16F, "InvokeVoid", "ifff")
+    native.ENTITY.SET_ENTITY_ALPHA = bind(0x44A0870B7E92D7C0, "InvokeVoid", "iib")
+    native.ENTITY.SET_ENTITY_DYNAMIC = bind(0x1718DE8E3F2823CA, "InvokeVoid", "ib")
+    native.ENTITY.GET_ENTITY_CAN_BE_DAMAGED = bind(0xD95CC5D2AB15A09F, "InvokeBool", "i")
+    native.ENTITY.GET_ENTITY_VELOCITY = bind(0x4805D2B1D8CF94A9, "InvokeV3", "i")
+    native.ENTITY.GET_ENTITY_SPEED = bind(0xD5037BA82E12416F, "InvokeFloat", "i")
+    native.ENTITY.IS_ENTITY_IN_AIR = bind(0x886E37EC497200B6, "InvokeBool", "i")
+    native.ENTITY.IS_ENTITY_ATTACHED = bind(0xB346476EF1A64897, "InvokeBool", "i")
+    native.ENTITY.GET_ENTITY_HEIGHT_ABOVE_GROUND = bind(0x1DD55701034110E5, "InvokeFloat", "i")
+    native.ENTITY.IS_ENTITY_UPSIDEDOWN = bind(0x1DBD58820FA61D71, "InvokeBool", "i")
+    native.ENTITY.SET_ENTITY_NO_COLLISION_ENTITY = bind(0xA53ED5520C07654A, "InvokeVoid", "iib")
+    native.ENTITY.IS_ENTITY_VISIBLE = bind(0x47D6F43D77935C75, "InvokeBool", "i")
+    native.ENTITY.GET_ENTITY_ALPHA = bind(0x5A47B3B5E63E94C6, "InvokeInt", "i")
+    native.ENTITY.DETACH_ENTITY = bind(0x961AC54BF0613F5D, "InvokeVoid", "ibb")
+    native.ENTITY.HAS_ENTITY_CLEAR_LOS_TO_ENTITY = bind(0xFCDFF7B72D23A1AC, "InvokeBool", "iii")
+    native.ENTITY.IS_ENTITY_PLAYING_ANIM = bind(0x1F0B79228E461EC9, "InvokeBool", "issi")
+    native.ENTITY.SET_ENTITY_TRAFFICLIGHT_OVERRIDE = bind(0x57C5DB656185EAC4, "InvokeVoid", "ii")
+    native.ENTITY.GET_ENTITY_TYPE = bind(0x8ACD366038D14505, "InvokeInt", "i")
+    native.ENTITY.SET_ENTITY_HAS_GRAVITY = bind(0x4A4722448F18EEF5, "InvokeVoid", "ib")
+    native.ENTITY.IS_ENTITY_A_PED = bind(0x524AC5ECEA15343E, "InvokeBool", "i")
+end
+-- [/MC:natives/entity]
+
+
+-- ----------------------------------------------------------------------------
